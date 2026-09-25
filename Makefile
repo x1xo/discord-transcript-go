@@ -15,7 +15,7 @@ fmt:
 	gofmt -w .
 
 # Regenerate the example transcripts from the test fixture.
-example: examples/transcript.html examples/transcript-interactive.html
+example: examples/transcript.html examples/transcript-interactive.html examples/transcript-short.html
 
 examples/transcript.html: testdata/export.json
 	go run ./cmd/discord-transcript -in testdata/export.json -out examples/transcript.html
@@ -23,12 +23,16 @@ examples/transcript.html: testdata/export.json
 examples/transcript-interactive.html: testdata/export.json
 	go run ./cmd/discord-transcript -in testdata/export.json -out examples/transcript-interactive.html -script
 
+examples/transcript-short.html: testdata/export.json
+	go run ./cmd/discord-transcript -in testdata/export.json -out examples/transcript-short.html -short-tags
+
 # Full check: tests plus a real-browser render of both examples.
 # Needs a Chrome or Chromium binary on PATH (or CHROME=/path/to/chrome).
 verify: test example
-	node scripts/verify-browser.mjs examples/transcript.html
-	node scripts/verify-browser.mjs examples/transcript-interactive.html
+	node scripts/verify-browser.mjs examples/transcript.html --css ../dist/discord-transcript.min.css
+	node scripts/verify-browser.mjs examples/transcript-interactive.html --css ../dist/discord-transcript.min.css
+	node scripts/verify-browser.mjs examples/transcript-short.html --css ../dist/discord-transcript.short.min.css
 
 clean:
-	rm -f examples/transcript.html examples/transcript-interactive.html
+	rm -f examples/transcript.html examples/transcript-interactive.html examples/transcript-short.html
 	go clean -testcache

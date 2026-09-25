@@ -91,11 +91,41 @@ The relevant constants, if you want to build your own tags or a CSP:
 | `transcript.ContractVersion` | `1.0.1` — the markup contract this module emits |
 | `transcript.DefaultCSSURL` | jsDelivr URL of the pinned stylesheet |
 | `transcript.DefaultCSSIntegrity` | its `sha384-…` hash |
+| `transcript.DefaultShortCSSURL` | the same stylesheet with compact tag names |
+| `transcript.DefaultShortCSSIntegrity` | its `sha384-…` hash |
 | `transcript.DefaultScriptURL` | jsDelivr URL of the optional script |
 | `transcript.DefaultScriptIntegrity` | its `sha384-…` hash |
 
 `AssetsWithScript()` returns the stylesheet and script together when you want the
 interactive extras.
+
+The pinned defaults point at a specific `discord-transcript-ui` release. If that
+release is not on npm yet (or you would rather not depend on jsDelivr), pass your
+own URL and hash with `WithCSS` — the markup contract is unchanged between minor
+releases.
+
+## Compact tag names (opt-in)
+
+The default markup uses readable names (`<discord-message>`, `<discord-mention>`).
+`-short-tags` (or `transcript.WithShortTags()`) switches to a compact vocabulary
+and links the matching stylesheet automatically:
+
+```go
+tr.WriteFile("small.html", transcript.WithShortTags())
+// <dms channel-name="general"><dm profile="…" data-dt-ready><div class="dt-msg">…
+// … <dme type="user">piton</dme> <dsp>spoiler</dsp> <dc>code</dc>
+```
+
+The mapping is a straight rename of 40 element names, so nothing is lost and the
+short stylesheet is the same size as the default one. Measured on a text-heavy
+transcript it cuts **~21% of the raw markup** and **~5% of the gzipped markup** —
+repeated long names compress well, so the win is real only for uncompressed files
+on disk. `transcript.ShortTags()` returns the mapping if you want to emit short
+markup yourself.
+
+An explicit `WithCSS` always wins over the short default, so a self-hosted or
+different-version stylesheet still works. This needs `discord-transcript-ui`
+1.1.0 or newer, which is where the short stylesheet is published.
 
 ## Command line
 

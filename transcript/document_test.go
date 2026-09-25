@@ -55,7 +55,7 @@ func sampleTranscript(t *testing.T) *Transcript {
 					Mentions: true,
 					Content:  parse("Hey! **bold** and the rest"),
 				},
-				Content: parse("Thanks! Here is a quote and a list:\n> quoted line\n- one\n- two\n1. first\n2. second\n" +
+				Content: parse("# Release notes\n## Highlights\nThanks! Here is a quote and a list:\n> quoted line\n- one\n- two\n1. first\n2. second\n" +
 					"```go\nfmt.Println(\"hi\")\n```\n-# small print"),
 				Reactions: []Reaction{
 					{Emoji: "🎉", Count: 3},
@@ -169,6 +169,8 @@ func TestDocumentStructure(t *testing.T) {
 		`<discord-ordered-list start="1"><discord-list-item>first</discord-list-item>`,
 		`<span class="dt-code-lang">go</span><discord-code>fmt.Println(&#34;hi&#34;)</discord-code>`,
 		"<discord-subscript>small print</discord-subscript>",
+		`<discord-header level="1">Release notes</discord-header>`,
+		`<discord-header level="2">Highlights</discord-header>`,
 		`<discord-system-message type="join" timestamp="2024-03-15T14:31:00Z">`,
 		`<discord-reaction data-dt-ready><span class="dt-reaction-emoji">🎉</span><span class="dt-reaction-count">3</span>`,
 		`<discord-reaction data-dt-ready reacted><img class="dt-reaction-emoji" src="https://cdn.discordapp.com/emojis/999999999999999999.png" alt=":party:"`,
@@ -387,6 +389,88 @@ func TestGroupingMetadata(t *testing.T) {
 	}
 	if !strings.Contains(html, `data-dt-group-start`) {
 		t.Errorf("expected group-start markers between authors")
+	}
+}
+
+func TestShortTags(t *testing.T) {
+	tr := sampleTranscript(t)
+
+	doc, err := tr.HTML(WithMedia(URLMedia()), WithShortTags())
+	if err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	html := string(doc)
+
+	// No long tag name may survive, or the element would be unstyled.
+	for _, bad := range []string{"<discord-", "</discord-"} {
+		if strings.Contains(html, bad) {
+			t.Errorf("short-tag output still contains %s:\n%s", bad, html)
+		}
+	}
+	for _, want := range []string{"<dms ", "<dm ", "<dme ", "<dsp>", "<de ", "<drp ", "<dc>", "<dh ", "<def "} {
+		if !strings.Contains(html, want) {
+			t.Errorf("short-tag output is missing %s", want)
+		}
+	}
+	// The document must point at the matching stylesheet, or nothing renders.
+	if !strings.Contains(html, DefaultShortCSSURL) || !strings.Contains(html, DefaultShortCSSIntegrity) {
+		t.Errorf("short tags should switch the default stylesheet to the short one")
+	}
+}
+
+func TestShortTagsRespectAnExplicitStylesheet(t *testing.T) {
+	tr := sampleTranscript(t)
+	doc, err := tr.HTML(
+		WithMedia(URLMedia()),
+		WithShortTags(),
+		WithCSS("https://cdn.example.com/short.css", "sha384-abc"),
+	)
+	if err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	html := string(doc)
+	if !strings.Contains(html, "https://cdn.example.com/short.css") {
+		t.Errorf("an explicit stylesheet must win over the short default:\n%s", html)
+	}
+	if strings.Contains(html, DefaultShortCSSURL) {
+		t.Errorf("the pinned default should have been replaced")
+	}
+	if !strings.Contains(html, "<dm ") {
+		t.Errorf("the markup should still use short tags")
+	}
+}
+
+func TestShortTagsDoNotTouchMessageText(t *testing.T) {
+	// A message that literally mentions a tag must stay escaped text, not become
+	// markup or a short code.
+	tr := &Transcript{
+		Channel: Channel{Name: "general", Type: ChannelText},
+		Messages: []Message{{
+			Author:  Author{Key: "1", Name: "piton"},
+			Content: ParseContent("use <discord-embed> and <discord-spoiler> here"),
+		}},
+	}
+	doc, err := tr.HTML(WithMedia(URLMedia()), WithShortTags())
+	if err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	html := string(doc)
+	if !strings.Contains(html, "&lt;discord-embed&gt;") || !strings.Contains(html, "&lt;discord-spoiler&gt;") {
+		t.Errorf("escaped tag names in message text must be left alone:\n%s", html)
+	}
+	if strings.Contains(html, "&lt;dsp&gt;") {
+		t.Errorf("escaped text must not be shortened")
+	}
+}
+
+func TestShortenTagsCoversEveryName(t *testing.T) {
+	for name, short := range ShortTags() {
+		long := "discord-" + name
+		got := shortenTags("<" + long + " a=\"1\">x</" + long + ">")
+		want := "<" + short + " a=\"1\">x</" + short + ">"
+		if got != want {
+			t.Errorf("shortenTags(%s) = %q, want %q", long, got, want)
+		}
 	}
 }
 

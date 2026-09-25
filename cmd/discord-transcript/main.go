@@ -24,6 +24,7 @@
 //	discord-transcript -in messages.json -channel general -media dir -media-dir assets -out out/
 //	discord-transcript -in messages.json -css https://cdn.example.com/discord-transcript.min.css -out t.html
 //	discord-transcript -in messages.json -script -out interactive.html
+//	discord-transcript -in messages.json -short-tags -out small.html
 package main
 
 import (
@@ -85,6 +86,7 @@ func run() error {
 		theme        = flag.String("theme", "dark", "dark|light")
 		cssURL       = flag.String("css", transcript.DefaultCSSURL, "stylesheet URL (empty to omit the stylesheet)")
 		cssSRI       = flag.String("css-integrity", transcript.DefaultCSSIntegrity, "stylesheet SRI hash (empty to omit)")
+		shortTags    = flag.Bool("short-tags", false, "emit compact tag names (dm, dme, dsp) and link the matching stylesheet")
 		withScript   = flag.Bool("script", false, "include the optional enhancement script")
 		scriptURL    = flag.String("script-url", transcript.DefaultScriptURL, "enhancement script URL")
 		scriptSRI    = flag.String("script-integrity", transcript.DefaultScriptIntegrity, "enhancement script SRI hash")
@@ -167,6 +169,12 @@ func run() error {
 		CSSIntegrity: *cssSRI,
 		CrossOrigin:  true,
 	}
+	// Short tags need the short-name stylesheet. Only swap the default: an
+	// explicit -css always wins.
+	if *shortTags && *cssURL == transcript.DefaultCSSURL && *cssSRI == transcript.DefaultCSSIntegrity {
+		assets.CSSURL = transcript.DefaultShortCSSURL
+		assets.CSSIntegrity = transcript.DefaultShortCSSIntegrity
+	}
 	if *withScript {
 		assets.ScriptURL = *scriptURL
 		assets.ScriptIntegrity = *scriptSRI
@@ -193,6 +201,9 @@ func run() error {
 		renderOpts = append(renderOpts, transcript.WithMedia(transcript.URLMedia()))
 	default:
 		return fmt.Errorf("invalid -media %q (want inline, dir or url)", *media)
+	}
+	if *shortTags {
+		renderOpts = append(renderOpts, transcript.WithShortTags())
 	}
 	if *header {
 		renderOpts = append(renderOpts, transcript.WithPageHeader())

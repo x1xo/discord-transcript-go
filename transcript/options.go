@@ -25,6 +25,11 @@ type Options struct {
 	Theme Theme
 	// Assets says where the stylesheet and the optional script come from.
 	Assets Assets
+	// ShortTags emits the compact tag vocabulary (dm, dme, dsp) instead of
+	// discord-message, discord-mention, discord-spoiler. The document then points
+	// at the short-name stylesheet, so set Assets yourself if you also host the
+	// stylesheet somewhere unusual.
+	ShortTags bool
 	// Media resolves attachment, avatar and emoji URLs. Defaults to base64
 	// inlining so the document keeps working without the network.
 	Media MediaStore
@@ -49,6 +54,10 @@ type Options struct {
 	// Warn receives non-fatal problems (a failed media download, for example).
 	// Rendering always continues.
 	Warn func(error)
+
+	// assetsConfigured records that the caller chose the stylesheet, so
+	// WithShortTags does not override it.
+	assetsConfigured bool
 }
 
 // DefaultMaxMediaBytes is the per-file download cap used when
@@ -90,7 +99,24 @@ func WithChannel(c Channel) Option { return func(o *Options) { o.Channel = c } }
 func WithTheme(t Theme) Option { return func(o *Options) { o.Theme = t } }
 
 // WithAssets replaces the whole asset configuration.
-func WithAssets(a Assets) Option { return func(o *Options) { o.Assets = a } }
+func WithAssets(a Assets) Option {
+	return func(o *Options) {
+		o.Assets = a
+		o.assetsConfigured = true
+	}
+}
+
+// WithShortTags emits the compact tag vocabulary and, unless the stylesheet was
+// set explicitly, points the document at the matching short-name stylesheet.
+func WithShortTags() Option {
+	return func(o *Options) {
+		o.ShortTags = true
+		if !o.assetsConfigured {
+			o.Assets.CSSURL = DefaultShortCSSURL
+			o.Assets.CSSIntegrity = DefaultShortCSSIntegrity
+		}
+	}
+}
 
 // WithCSS points the document at a stylesheet, with an optional SRI hash.
 // Pass an empty integrity to omit the attribute.
@@ -98,6 +124,7 @@ func WithCSS(url, integrity string) Option {
 	return func(o *Options) {
 		o.Assets.CSSURL = url
 		o.Assets.CSSIntegrity = integrity
+		o.assetsConfigured = true
 	}
 }
 

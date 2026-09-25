@@ -24,7 +24,11 @@ type renderer struct {
 func renderFragment(ctx context.Context, t *Transcript, o *Options) (string, error) {
 	r := &renderer{ctx: ctx, o: o}
 	r.writeMessages(t)
-	return r.b.String(), nil
+	fragment := r.b.String()
+	if o.ShortTags {
+		fragment = shortenTags(fragment)
+	}
+	return fragment, nil
 }
 
 func (r *renderer) writeMessages(t *Transcript) {

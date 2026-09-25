@@ -18,6 +18,13 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const target = resolve(process.argv[2] ?? 'examples/transcript.html');
+
+// Optional local stylesheet. The generated document links a pinned CDN build;
+// if that release is not published yet (or the network is unavailable), pass
+// --css ../dist/discord-transcript.min.css and the check swaps it in, so the
+// markup is still verified against the real stylesheet.
+const cssFlag = process.argv.indexOf('--css');
+const localCSS = cssFlag === -1 ? null : resolve(process.argv[cssFlag + 1]);
 if (!existsSync(target)) {
 	console.error(`✗ ${target} does not exist (run the CLI first)`);
 	process.exit(1);
@@ -114,6 +121,32 @@ for (let attempt = 0; attempt < 80; attempt++) {
 }
 await sleep(1200);
 
+if (localCSS) {
+	const probe = await send('Runtime.evaluate', {
+		returnByValue: true,
+		expression: `(() => {
+			const el = document.querySelector('discord-messages, dms');
+			return el ? getComputedStyle(el).backgroundColor !== 'rgba(0, 0, 0, 0)' : false;
+		})()`
+	});
+	if (!probe.result.value) {
+		await send('Runtime.evaluate', {
+			expression: `(() => {
+				const link = document.querySelector('link[rel=stylesheet]');
+				if (link) {
+					// crossorigin makes this a CORS request, which file:// cannot
+					// satisfy, so drop it along with the now-wrong integrity hash.
+					link.removeAttribute('integrity');
+					link.removeAttribute('crossorigin');
+					link.href = ${JSON.stringify(pathToFileURL(localCSS).href)};
+				}
+			})()`
+		});
+		await sleep(900);
+		console.log(`  (the CDN stylesheet did not load; checked against ${localCSS})`);
+	}
+}
+
 const result = await send('Runtime.evaluate', {
 	returnByValue: true,
 	expression: `(() => {
@@ -121,12 +154,14 @@ const result = await send('Runtime.evaluate', {
 		const check = (name, actual, expected) =>
 			checks.push({ name, actual: String(actual), expected: String(expected), pass: String(actual) === String(expected) });
 		const style = (node, prop) => (node ? getComputedStyle(node).getPropertyValue(prop) : '<missing>');
+		// The document may use either vocabulary; match both.
+		const T = (long, short) => ':is(discord-' + long + ',' + short + ')';
 		const all = (sel) => Array.from(document.querySelectorAll(sel));
 		document.documentElement.style.setProperty('--dt-transition', '0s');
 
-		const messages = all('discord-message');
+		const messages = all(T('message','dm'));
 		check('messages found', messages.length > 0, true);
-		check('stylesheet applied', style(document.querySelector('discord-messages'), 'background-color') !== 'rgba(0, 0, 0, 0)', true);
+		check('stylesheet applied', style(document.querySelector(T('messages','dms')), 'background-color') !== 'rgba(0, 0, 0, 0)', true);
 
 		// The static structure the stylesheet needs must be present already.
 		check('every message has its own layout', all('.dt-msg').length, messages.length);
@@ -136,17 +171,28 @@ const result = await send('Runtime.evaluate', {
 		check('role colour applied', all('.dt-author').some((el) => el.style.color !== ''), true);
 		check('timestamps rendered', all('.dt-timestamp').every((el) => el.textContent.trim().length > 0), true);
 		check('verified bot tag', all('.dt-badge--verified')[0]?.textContent ?? '', 'APP');
-		check('reactions rendered', all('discord-reaction').length > 0, true);
-		check('reply rendered', all('discord-reply').length > 0, true);
+		check('reactions rendered', all(T('reaction','dr')).length > 0, true);
+		check('reply rendered', all(T('reply','drp')).length > 0, true);
 
 		// Headers: markdown headings render, and the channel header comes from the
 		// channel-name attribute via the stylesheet.
-		const headings = all('discord-header');
+		const headings = all(T('header','dh'));
 		check('markdown headings rendered', headings.length > 0, true);
 		check('heading levels set', headings.every((h) => h.getAttribute('level')), true);
 		check('level 1 heading is larger', parseFloat(getComputedStyle(headings[0]).fontSize) > 16, true);
-		const channelHeader = getComputedStyle(document.querySelector('discord-messages'), '::before').content;
+		const channelHeader = getComputedStyle(document.querySelector(T('messages','dms')), '::before').content;
 		check('channel header rendered', channelHeader.includes('general'), true);
+
+		// Small print (#- subtext) must be the subtle grey at 14px, not body text.
+		const small = all(T('subscript','dsub'))[0];
+		check('small print rendered', small !== undefined, true);
+		if (small) {
+			const smallStyle = getComputedStyle(small);
+			check('small print is 14px', smallStyle.fontSize, '14px');
+			// --dt-text-subtle in the dark theme; the light theme uses #595a63.
+			check('small print is the subtle grey', smallStyle.color, 'rgb(197, 198, 202)');
+			check('small print is not body coloured', smallStyle.color !== getComputedStyle(document.querySelector('.dt-author')).color, true);
+		}
 
 		// Media: inlined images must decode, and no URI may appear as text.
 		const inlined = all('img[src^="data:image"]');
@@ -159,7 +205,7 @@ const result = await send('Runtime.evaluate', {
 
 		// Without the script a spoiler is hidden but peekable on hover; with it,
 		// a click reveals it.
-		const spoiler = document.querySelector('discord-spoiler');
+		const spoiler = document.querySelector(T('spoiler','dsp'));
 		if (spoiler) {
 			const hidden = style(spoiler, 'background-color');
 			check('spoiler starts hidden', style(spoiler, 'color') === 'rgba(0, 0, 0, 0)', true);

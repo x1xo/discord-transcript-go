@@ -2,7 +2,7 @@ package transcript
 
 // ContractVersion is the discord-transcript-ui release whose markup contract
 // this module emits.
-const ContractVersion = "1.0.1"
+const ContractVersion = "1.1.0"
 
 // Pinned defaults. The stylesheet is all a transcript needs to render: this
 // module emits the full markup the stylesheet targets, so avatars, author
@@ -12,12 +12,18 @@ const (
 	// DefaultCSSURL is the jsDelivr URL of the pinned stylesheet.
 	DefaultCSSURL = "https://cdn.jsdelivr.net/npm/discord-transcript-ui@" + ContractVersion + "/dist/discord-transcript.min.css"
 	// DefaultCSSIntegrity is its Subresource Integrity hash.
-	DefaultCSSIntegrity = "sha384-MdwneGHI4BQDRywMXXD0VVcvuU2mSlU/cJlHVjDaS6fkNJ/5+OGgmv5w4D/VAOa+"
+	DefaultCSSIntegrity = "sha384-ZwplFA3/xu47EZ0oSGTMwyi8siRbfdDRiGANX4HbKlPdbwlEjnDZjeTZz4rw9jyx"
+
+	// DefaultShortCSSURL is the same stylesheet rewritten to the compact tag
+	// vocabulary, for documents rendered with WithShortTags.
+	DefaultShortCSSURL = "https://cdn.jsdelivr.net/npm/discord-transcript-ui@" + ContractVersion + "/dist/discord-transcript.short.min.css"
+	// DefaultShortCSSIntegrity is its Subresource Integrity hash.
+	DefaultShortCSSIntegrity = "sha384-o+TMmUarWmSsA4gonFBZ8qDLhrZEJGJkAMyTwsFheJxYEgkd9XE+DdSXMo0e6EH3"
 
 	// DefaultScriptURL is the jsDelivr URL of the optional enhancement script.
 	DefaultScriptURL = "https://cdn.jsdelivr.net/npm/discord-transcript-ui@" + ContractVersion + "/dist/discord-transcript.min.js"
 	// DefaultScriptIntegrity is its Subresource Integrity hash.
-	DefaultScriptIntegrity = "sha384-hxBXQMtoZvVzUDgfAw6RWEVsVW7oJ3++5VYQr2i+vU0gOBIWebUzWahpufZUpQUN"
+	DefaultScriptIntegrity = "sha384-aPG5pvJ6e+7rRJ6qYbneL8xBPZZP24BUxBezSvQB0tAgpeKdea6D9jllfke4JZce"
 )
 
 // Assets says where the browser loads the stylesheet, and optionally the
