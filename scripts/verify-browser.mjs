@@ -183,6 +183,19 @@ const result = await send('Runtime.evaluate', {
 		const channelHeader = getComputedStyle(document.querySelector(T('messages','dms')), '::before').content;
 		check('channel header rendered', channelHeader.includes('general'), true);
 
+		// Timestamps: message headers show the short date and time for anything
+		// older than yesterday ("3/15/24, 2:28 PM"). The compact form
+		// ("11:49PM") and the "Yesterday at …" prefix only appear for recent
+		// messages, which the Go unit tests cover with dates relative to now.
+		const headerStamp = document.querySelector('.dt-timestamp');
+		check('message header timestamp', headerStamp?.textContent ?? '', '3/15/24, 2:28 PM');
+		const inlineStamp = document.querySelector(T('time', 'dti'));
+		if (inlineStamp && !window.DiscordTranscript) {
+			// Without the script the renderer's own fallback stands: the same
+			// short date and time shape.
+			check('inline timestamp', inlineStamp.textContent, '3/15/24, 2:28 PM');
+		}
+
 		// Small print (#- subtext) must be the subtle grey at 14px, not body text.
 		const small = all(T('subscript','dsub'))[0];
 		check('small print rendered', small !== undefined, true);

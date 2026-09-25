@@ -104,7 +104,14 @@ func sampleTranscript(t *testing.T) *Transcript {
 
 func TestDocumentGolden(t *testing.T) {
 	tr := sampleTranscript(t)
-	got, err := tr.HTML(WithMedia(URLMedia()), WithGenerator("discord-transcript-go test"))
+	// A fixed stylesheet keeps the golden about markup: the real pins are covered
+	// by TestAssetsConfiguration and TestPinsMatchLocalUIBuild, so a version bump
+	// no longer churns this file.
+	got, err := tr.HTML(
+		WithMedia(URLMedia()),
+		WithGenerator("discord-transcript-go test"),
+		WithCSS("https://cdn.example.test/discord-transcript.min.css", "sha384-test"),
+	)
 	if err != nil {
 		t.Fatalf("HTML: %v", err)
 	}
@@ -161,7 +168,7 @@ func TestDocumentStructure(t *testing.T) {
 		`<discord-link href="https://example.com/x"`,
 		`<span class="dt-badges"><span class="dt-badge dt-badge--verified">APP</span></span>`,
 		`data-dt-continuation`,
-		`data-dt-short-time="14:32"`,
+		`data-dt-short-time="2:32PM"`,
 		`<discord-reply mentions data-dt-ready><span class="dt-reply-avatar">`,
 		`<span class="dt-reply-author">@piton</span>`,
 		"<discord-quote>quoted line</discord-quote>",
@@ -380,7 +387,7 @@ func TestGroupingMetadata(t *testing.T) {
 	}
 	// The second miona message follows within the window, so the author row is
 	// omitted and the gutter timestamp is available for hover.
-	if !strings.Contains(html, `data-dt-continuation data-dt-short-time="14:32"`) {
+	if !strings.Contains(html, `data-dt-continuation data-dt-short-time="2:32PM"`) {
 		t.Errorf("expected a continuation row with a short timestamp:\n%s", html)
 	}
 	// Continuation rows must not repeat the header.

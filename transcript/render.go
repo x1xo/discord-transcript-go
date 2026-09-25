@@ -272,7 +272,7 @@ func (r *renderer) writeEmbed(e Embed) {
 		}
 		if !e.Footer.Timestamp.IsZero() {
 			r.b.WriteString(`<span class="dt-embed-footer-sep"></span>` +
-				escapeText(r.headerStamp(e.Footer.Timestamp)))
+				escapeText(r.inlineStamp(e.Footer.Timestamp, 'f')))
 		}
 		r.b.WriteString(`</discord-embed-footer>`)
 	}
@@ -603,20 +603,38 @@ func (r *renderer) iso(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-// headerStamp is the text shown next to the author name. It is absolute so it
-// stays true however long the file is kept.
+// headerStamp is the text shown next to the author name, in the shape Discord
+// uses: the time alone for today, "Yesterday at <time>" for yesterday, and the
+// short date and time before that.
+//
+// It is computed when the transcript is written, so a document generated today
+// says "11:49PM" for a message from today even when it is read years later. That
+// is inherent to the format; the enhancement script recomputes it for the
+// markup it builds itself, but not for rows this renderer marks data-dt-ready.
 func (r *renderer) headerStamp(t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.In(r.loc()).Format("2 Jan 2006 15:04")
+	local := t.In(r.loc())
+	now := time.Now().In(r.loc())
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, r.loc())
+	day := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, r.loc())
+	switch {
+	case day.Equal(today):
+		return local.Format(compactTimeLayout)
+	case day.Equal(today.AddDate(0, 0, -1)):
+		return "Yesterday at " + local.Format(compactTimeLayout)
+	default:
+		return local.Format(shortDateTimeLayout)
+	}
 }
 
+// shortStamp is the gutter time shown on hover for a continuation row.
 func (r *renderer) shortStamp(t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.In(r.loc()).Format("15:04")
+	return t.In(r.loc()).Format(compactTimeLayout)
 }
 
 func (r *renderer) fullStamp(t time.Time) string {
@@ -626,8 +644,22 @@ func (r *renderer) fullStamp(t time.Time) string {
 	return t.In(r.loc()).Format("Mon, 02 Jan 2006 15:04:05 -0700")
 }
 
+// The two timestamp shapes Discord uses. Message headers drop the space before
+// AM/PM ("11:49PM"); every other stamp keeps it ("3/14/26, 11:57 AM").
+const (
+	compactTimeLayout   = "3:04PM"
+	shortTimeLayout     = "3:04 PM"
+	shortTimeSecsLayout = "3:04:05 PM"
+	shortDateLayout     = "1/2/06"
+	longDateLayout      = "January 2, 2006"
+	shortDateTimeLayout = "1/2/06, 3:04 PM"
+	shortDateSecsLayout = "1/2/06, 3:04:05 PM"
+	fullDateTimeLayout  = "Monday, January 2, 2006 at 3:04 PM"
+)
+
 // inlineStamp is the text inside a <discord-time>, used until (or instead of)
-// the enhancement script rewriting it in the reader's locale.
+// the enhancement script rewriting it in the reader's locale. These are the
+// formats Discord's client shows for each of the <t:...> flags.
 func (r *renderer) inlineStamp(t time.Time, format byte) string {
 	if t.IsZero() {
 		return ""
@@ -635,21 +667,23 @@ func (r *renderer) inlineStamp(t time.Time, format byte) string {
 	local := t.In(r.loc())
 	switch format {
 	case 't':
-		return local.Format("15:04")
+		return local.Format(shortTimeLayout)
 	case 'T':
-		return local.Format("15:04:05")
+		return local.Format(shortTimeSecsLayout)
 	case 'd':
-		return local.Format("2006-01-02")
+		return local.Format(shortDateLayout)
 	case 'D':
-		return local.Format("2 January 2006")
+		return local.Format(longDateLayout)
 	case 'F':
-		return local.Format("Monday, 2 January 2006 15:04")
+		return local.Format(fullDateTimeLayout)
 	case 's':
-		return local.Format("2006-01-02 15:04")
+		return local.Format(shortDateTimeLayout)
 	case 'S':
-		return local.Format("2006-01-02 15:04:05")
+		return local.Format(shortDateSecsLayout)
 	default:
-		return local.Format("2 January 2006 15:04")
+		// Includes 'f' and 'R': both fall back to the absolute short date and
+		// time, which is what a script-less reader sees.
+		return local.Format(shortDateTimeLayout)
 	}
 }
 
