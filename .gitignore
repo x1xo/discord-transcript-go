@@ -1,0 +1,12 @@
+# Build outputs and local scratch files.
+/discord-transcript
+/dist/
+*.test
+*.out
+coverage.txt
+
+
+# Editors
+.idea/
+.vscode/
+.DS_Store

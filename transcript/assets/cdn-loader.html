@@ -1,0 +1,56 @@
+<!--
+	discord-transcript-ui bootstrap (paste this into every generated transcript).
+
+	Behaviour
+	  1. Tries each mirror in order, for the stylesheet and for the script.
+	  2. Applies Subresource Integrity on the npm-backed mirrors, which all serve
+	     byte-identical files and send CORS headers. Other mirrors are loaded
+	     without integrity so a missing CORS header can never blackhole them.
+	  3. If every mirror fails, it stops quietly: the transcript stays readable as
+	     plain HTML with unstyled components. Nothing throws, nothing blocks.
+
+	Requirements
+	  * The configuration script (window.$discordMessage) must appear BEFORE this
+	    block, because the script reads it when it runs.
+	  * Add mirrors only when they serve the exact same bytes.
+
+	The %%…%% placeholders are filled in by tools/scaffold.mjs.
+-->
+<script>
+	(function (w, d) {
+		var CSS = %%CSS_SOURCES%%;
+		var JS = %%JS_SOURCES%%;
+
+		function load(list, make) {
+			var i = 0;
+			(function next() {
+				if (i >= list.length) return; /* every mirror failed — degrade quietly */
+				var entry = list[i++];
+				var node = make(entry);
+				node.onerror = next;
+				(d.head || d.documentElement).appendChild(node);
+			})();
+		}
+
+		load(CSS, function (entry) {
+			var link = d.createElement('link');
+			link.rel = 'stylesheet';
+			link.href = entry.u;
+			if (entry.s) {
+				link.integrity = entry.s;
+				link.crossOrigin = 'anonymous';
+			}
+			return link;
+		});
+
+		load(JS, function (entry) {
+			var script = d.createElement('script');
+			script.src = entry.u;
+			if (entry.s) {
+				script.integrity = entry.s;
+				script.crossOrigin = 'anonymous';
+			}
+			return script;
+		});
+	})(window, document);
+</script>
