@@ -263,6 +263,23 @@ disgo/                 the adapter: []discord.Message -> IR, cache-backed resolv
 cmd/discord-transcript JSON in, minimal HTML out
 ```
 
+## Generated files
+
+Two files in `transcript/` are written by the UI repository's build and must not
+be edited by hand:
+
+| File | Source |
+| --- | --- |
+| `transcript/pins.go` | `dist/manifest.json` — the contract version, CDN URLs and SRI hashes |
+| `transcript/tags_gen.go` | `build/short-tags.mjs` — the compact tag mapping |
+
+Run `npm run build` in `discord-transcript-ui` after changing it: that refreshes
+both files here (and fails the UI's own `build:check` if they are stale).
+`TestPinsMatchLocalUIBuild` catches a hand edit or a rebuild the sync missed, and
+skips when the UI repository is not checked out beside this module. The generated
+files carry a `DO NOT EDIT` header, and `TestGeneratedFilesAreMarkedGenerated`
+keeps it there.
+
 ## Development
 
 ```bash
