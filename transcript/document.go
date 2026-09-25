@@ -86,6 +86,11 @@ func buildDocument(t *Transcript, o *Options, fragment string) string {
 	}
 
 	b.WriteString(`</head><body class="dt-page"><div class="dt-page__inner">`)
+	if o.ShowHeader {
+		if title := documentTitle(t, o); title != "" {
+			b.WriteString(`<h1 class="dt-page__title">` + escapeText(title) + `</h1>`)
+		}
+	}
 	if o.ShowMeta {
 		if meta := metaLine(t, o); meta != "" {
 			b.WriteString(`<p class="dt-page__meta">` + escapeText(meta) + `</p>`)
@@ -103,13 +108,20 @@ func documentTitle(t *Transcript, o *Options) string {
 		return t.Title
 	case o.Title != "":
 		return o.Title
-	case o.Channel.Name != "":
-		return o.Channel.Name
-	case t.Channel.Name != "":
-		return "#" + t.Channel.Name
+	case effectiveChannel(t, o).Name != "":
+		return "#" + effectiveChannel(t, o).Name
 	default:
 		return ""
 	}
+}
+
+// effectiveChannel prefers the transcript's own channel and falls back to the
+// one supplied through Options.
+func effectiveChannel(t *Transcript, o *Options) Channel {
+	if t.Channel.Name != "" || t.Channel.Type != "" {
+		return t.Channel
+	}
+	return o.Channel
 }
 
 // metaLine summarises the conversation. Only rendered with WithMeta, because it
@@ -151,8 +163,8 @@ func metaLine(t *Transcript, o *Options) string {
 			parts = append(parts, first.In(loc).Format("2 January 2006")+" – "+last.In(loc).Format("2 January 2006"))
 		}
 	}
-	if t.Channel.Guild != "" {
-		parts = append(parts, t.Channel.Guild)
+	if channel := effectiveChannel(t, o); channel.Guild != "" {
+		parts = append(parts, channel.Guild)
 	}
 	if o.Generator != "" {
 		parts = append(parts, o.Generator)

@@ -137,7 +137,23 @@ offline export needs when no cache is available:
 
 Other flags: `-theme dark|light`, `-media inline|dir|url`, `-max-media-bytes`,
 `-profiles overrides.json`, `-self <user-id>`, `-timezone`, `-locale`,
-`-no-replies`, `-meta`, `-quiet`. Run `discord-transcript -h` for all of them.
+`-no-replies`, `-header`, `-meta`, `-quiet`. Run `discord-transcript -h` for all of them.
+
+## Headers
+
+Three kinds, all working:
+
+1. **Markdown headings** — `#`, `##` and `###` become `<discord-header level="1|2|3">`
+   and are styled as Discord's heading sizes. This is on by default; the example
+   transcript contains both an `h1` and an `h2`.
+2. **Channel header** — `<discord-messages channel-name="general" channel-type="text">`
+   renders a header with the `#`/channel-type prefix straight from the stylesheet,
+   so it needs no JavaScript. It comes from the `channel` object in the JSON input
+   or from `-channel`/`-channel-type`.
+3. **Page header** — opt-in with `-header` (or `transcript.WithPageHeader()`), which
+   adds `<h1 class="dt-page__title">` above the conversation; pair it with `-meta`
+   for the message count and date range. It is off by default because the channel
+   header above already shows the name, and minimal output is the point.
 
 ## Media: why base64, and when not to
 

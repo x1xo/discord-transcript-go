@@ -390,6 +390,26 @@ func TestGroupingMetadata(t *testing.T) {
 	}
 }
 
+func TestPageHeaderIsOptIn(t *testing.T) {
+	tr := sampleTranscript(t)
+
+	plain, err := tr.HTML(WithMedia(URLMedia()))
+	if err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	if strings.Contains(string(plain), "dt-page__title") {
+		t.Errorf("the page header should be off by default")
+	}
+
+	withHeader, err := tr.HTML(WithMedia(URLMedia()), WithPageHeader())
+	if err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	if !strings.Contains(string(withHeader), `<h1 class="dt-page__title">#general</h1>`) {
+		t.Errorf("WithPageHeader should render the title as an h1:\n%s", withHeader)
+	}
+}
+
 func TestSystemMessageContentIsInline(t *testing.T) {
 	tr := &Transcript{
 		Channel: Channel{Name: "general", Type: ChannelText},

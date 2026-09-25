@@ -139,6 +139,15 @@ const result = await send('Runtime.evaluate', {
 		check('reactions rendered', all('discord-reaction').length > 0, true);
 		check('reply rendered', all('discord-reply').length > 0, true);
 
+		// Headers: markdown headings render, and the channel header comes from the
+		// channel-name attribute via the stylesheet.
+		const headings = all('discord-header');
+		check('markdown headings rendered', headings.length > 0, true);
+		check('heading levels set', headings.every((h) => h.getAttribute('level')), true);
+		check('level 1 heading is larger', parseFloat(getComputedStyle(headings[0]).fontSize) > 16, true);
+		const channelHeader = getComputedStyle(document.querySelector('discord-messages'), '::before').content;
+		check('channel header rendered', channelHeader.includes('general'), true);
+
 		// Media: inlined images must decode, and no URI may appear as text.
 		const inlined = all('img[src^="data:image"]');
 		check('inlined images present', inlined.length > 0, true);

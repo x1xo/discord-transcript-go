@@ -97,6 +97,7 @@ func run() error {
 		self         = flag.String("self", "", "self user ID; messages mentioning it are highlighted")
 		profilesPath = flag.String("profiles", "", "JSON file with author overrides")
 		noReplies    = flag.Bool("no-replies", false, "drop reply previews")
+		header       = flag.Bool("header", false, "add a page-level <h1> with the title")
 		meta         = flag.Bool("meta", false, "add a metadata line (message count, date range)")
 		quiet        = flag.Bool("quiet", false, "suppress the summary on stderr")
 	)
@@ -192,6 +193,9 @@ func run() error {
 		renderOpts = append(renderOpts, transcript.WithMedia(transcript.URLMedia()))
 	default:
 		return fmt.Errorf("invalid -media %q (want inline, dir or url)", *media)
+	}
+	if *header {
+		renderOpts = append(renderOpts, transcript.WithPageHeader())
 	}
 	if *meta {
 		renderOpts = append(renderOpts, transcript.WithMeta())

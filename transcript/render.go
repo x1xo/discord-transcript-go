@@ -28,11 +28,12 @@ func renderFragment(ctx context.Context, t *Transcript, o *Options) (string, err
 }
 
 func (r *renderer) writeMessages(t *Transcript) {
+	channel := effectiveChannel(t, r.o)
 	groups := groupMessages(t.Messages, DefaultGroupWindow)
 	r.b.WriteString("<discord-messages")
-	r.attr("channel-name", t.Channel.Name)
-	if t.Channel.Name != "" {
-		r.attr("channel-type", string(t.Channel.Type))
+	r.attr("channel-name", channel.Name)
+	if channel.Name != "" {
+		r.attr("channel-type", string(channel.Type))
 	}
 	r.b.WriteString(">")
 	for i, m := range t.Messages {

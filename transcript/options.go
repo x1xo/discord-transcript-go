@@ -36,7 +36,12 @@ type Options struct {
 	TimeZone *time.Location
 	// SelfUserID marks messages that mention this user as highlighted.
 	SelfUserID string
-	// ShowMeta adds a metadata line under nothing: off by default to keep the
+	// ShowHeader adds a page-level <h1> above the conversation, for readers who
+	// want the title as document content. Note that <discord-messages
+	// channel-name="..."> already renders a channel header inside the panel, so
+	// enabling both shows the name twice.
+	ShowHeader bool
+	// ShowMeta adds a metadata line under the header: off by default to keep the
 	// document as small as possible.
 	ShowMeta bool
 	// Generator is recorded in the page metadata when ShowMeta is set.
@@ -136,6 +141,9 @@ func WithLocale(locale string) Option { return func(o *Options) { o.Locale = loc
 
 // WithSelfUserID marks messages mentioning this user as highlighted.
 func WithSelfUserID(id string) Option { return func(o *Options) { o.SelfUserID = id } }
+
+// WithPageHeader adds a page-level <h1> with the document title.
+func WithPageHeader() Option { return func(o *Options) { o.ShowHeader = true } }
 
 // WithMeta adds the metadata line under the page title.
 func WithMeta() Option { return func(o *Options) { o.ShowMeta = true } }
