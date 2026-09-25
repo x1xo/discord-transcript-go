@@ -33,7 +33,7 @@ func plainMessage() discord.Message {
 		ID:        snowflake.ID(1000),
 		GuildID:   &guildID,
 		ChannelID: chanID,
-		Author:    discord.User{ID: userID, Username: "piton", GlobalName: ptr("Piton")},
+		Author:    discord.User{ID: userID, Username: "piton", GlobalName: ptr("Piton"), Discriminator: "0"},
 		Content:   "hello **world**",
 		CreatedAt: baseTime(),
 	}
@@ -54,9 +54,10 @@ func TestBasicMessage(t *testing.T) {
 
 	for _, want := range []string{
 		`<discord-messages channel-name="general" channel-type="text">`,
-		`<discord-message profile="111111111111111111" author="Piton" timestamp="2024-03-15T14:28:00Z">`,
+		`<discord-message profile="111111111111111111" author="Piton" timestamp="2024-03-15T14:28:00Z" data-dt-ready>`,
 		"hello <discord-bold>world</discord-bold>",
-		`"author":"Piton"`,
+		`<span class="dt-author">Piton</span>`,
+		`<span class="dt-avatar"><img src="https://cdn.discordapp.com/embed/avatars/`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("missing %s in:\n%s", want, html)
@@ -91,8 +92,8 @@ func TestMemberNickAndRoleColourFromCache(t *testing.T) {
 	if !strings.Contains(html, `author="Pit"`) {
 		t.Errorf("member nick should be used, got:\n%s", html)
 	}
-	if !strings.Contains(html, `"roleColor":"#57f287"`) {
-		t.Errorf("role colour from the cache should reach the profile map:\n%s", html)
+	if !strings.Contains(html, `<span class="dt-author" style="color:#57f287">Pit</span>`) {
+		t.Errorf("role colour from the cache should colour the author name:\n%s", html)
 	}
 	if !strings.Contains(html, `<discord-mention type="role" style="--dt-mention-role-color: #57f287">Moderator</discord-mention>`) {
 		t.Errorf("role mention should resolve its name and colour:\n%s", html)
@@ -108,7 +109,7 @@ func TestOverridesWinOverMessageData(t *testing.T) {
 	if !strings.Contains(html, `author="renamed"`) {
 		t.Errorf("override name should win:\n%s", html)
 	}
-	if !strings.Contains(html, `"roleColor":"#eb459e"`) {
+	if !strings.Contains(html, `<span class="dt-author" style="color:#eb459e">renamed</span>`) {
 		t.Errorf("override colour should win:\n%s", html)
 	}
 }
@@ -152,7 +153,8 @@ func TestReplyAndEditedAndEphemeralAndHighlight(t *testing.T) {
 		` edited`,
 		` ephemeral`,
 		` highlight`,
-		`<discord-reply profile="111111111111111111" author="Piton" mentions>the original text</discord-reply>`,
+		`<discord-reply mentions data-dt-ready><span class="dt-reply-avatar"><img src="https://cdn.discordapp.com/embed/avatars/`,
+		`<span class="dt-reply-author">@Piton</span>the original text</discord-reply>`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("missing %s in:\n%s", want, html)
@@ -204,7 +206,7 @@ func TestEmbedsAttachmentsAndReactions(t *testing.T) {
 	html := render(t, New(), msg)
 
 	for _, want := range []string{
-		`<discord-embed color="#5865f2">`,
+		`<discord-embed color="#5865f2" data-dt-ready>`,
 		`<span class="dt-embed-author">`,
 		`<a class="dt-embed-title" href="https://example.com"`,
 		`<discord-embed-description>Some <discord-bold>description</discord-bold></discord-embed-description>`,
@@ -212,13 +214,13 @@ func TestEmbedsAttachmentsAndReactions(t *testing.T) {
 		`<discord-embed-footer>`,
 		`<div class="dt-embed-image">`,
 		`<div class="dt-embed-thumbnail">`,
-		`<discord-image-attachment><img src="https://cdn.discordapp.com/attachments/1/2/shot.png"`,
-		`<discord-video-attachment><video controls`,
-		`<discord-audio-attachment><audio controls`,
-		`<discord-image-attachment spoiler><img src="https://cdn.discordapp.com/attachments/1/2/spoiler.png"`,
-		`<discord-file-attachment name="report.pdf" bytes="1.5" bytes-unit="KB" type="PDF">`,
-		`<discord-reaction emoji="🎉" count="3" reacted></discord-reaction>`,
-		`<discord-reaction emoji="https://cdn.discordapp.com/emojis/999999999999999999.png" name=":party:" count="12">`,
+		`<discord-image-attachment data-dt-ready><img src="https://cdn.discordapp.com/attachments/1/2/shot.png"`,
+		`<discord-video-attachment data-dt-ready><video controls`,
+		`<discord-audio-attachment data-dt-ready><audio controls`,
+		`<discord-image-attachment spoiler data-dt-ready><img src="https://cdn.discordapp.com/attachments/1/2/spoiler.png"`,
+		`<discord-file-attachment data-dt-ready name="report.pdf" bytes="1.5" bytes-unit="KB" type="PDF">`,
+		`<discord-reaction data-dt-ready reacted><span class="dt-reaction-emoji">🎉</span><span class="dt-reaction-count">3</span>`,
+		`<discord-reaction data-dt-ready><img class="dt-reaction-emoji" src="https://cdn.discordapp.com/emojis/999999999999999999.png" alt=":party:"`,
 		`[sticker: wave]`,
 	} {
 		if !strings.Contains(html, want) {

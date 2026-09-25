@@ -1,4 +1,4 @@
-.PHONY: build test vet fmt generate verify example clean
+.PHONY: build test vet fmt verify example clean
 
 # Compile everything.
 build:
@@ -14,22 +14,21 @@ vet:
 fmt:
 	gofmt -w .
 
-# Refresh the embedded discord-transcript-ui assets from ../dist.
-# Override the source with DISCORD_TRANSCRIPT_UI_DIR=/path/to/transcripts.
-generate:
-	go generate ./...
-
-# Regenerate the example transcript from the test fixture.
-example: examples/transcript.html
+# Regenerate the example transcripts from the test fixture.
+example: examples/transcript.html examples/transcript-interactive.html
 
 examples/transcript.html: testdata/export.json
 	go run ./cmd/discord-transcript -in testdata/export.json -out examples/transcript.html
 
-# Full check: tests plus a real-browser render of the generated transcript.
+examples/transcript-interactive.html: testdata/export.json
+	go run ./cmd/discord-transcript -in testdata/export.json -out examples/transcript-interactive.html -script
+
+# Full check: tests plus a real-browser render of both examples.
 # Needs a Chrome or Chromium binary on PATH (or CHROME=/path/to/chrome).
 verify: test example
 	node scripts/verify-browser.mjs examples/transcript.html
+	node scripts/verify-browser.mjs examples/transcript-interactive.html
 
 clean:
-	rm -f examples/transcript.html
+	rm -f examples/transcript.html examples/transcript-interactive.html
 	go clean -testcache

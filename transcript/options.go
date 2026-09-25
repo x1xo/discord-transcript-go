@@ -14,25 +14,8 @@ const (
 	ThemeLight Theme = "light"
 )
 
-// AssetMode decides how the stylesheet and the enhancement script are referenced.
-type AssetMode string
-
-// Supported asset modes.
-const (
-	// AssetsCDN links the pinned CDN files, with Subresource Integrity and the
-	// multi-mirror fallback chain. Smallest documents; the browser caches the
-	// assets across every transcript.
-	AssetsCDN AssetMode = "cdn"
-	// AssetsLocal writes relative paths, for a folder you ship (or archive)
-	// alongside the HTML.
-	AssetsLocal AssetMode = "local"
-	// AssetsInline embeds the stylesheet and script in the document, so it needs
-	// no network at all. Costs roughly 50 KB per file before compression.
-	AssetsInline AssetMode = "inline"
-)
-
-// Options configures a render. Use the With* helpers; the zero value is valid
-// and renders a dark, CDN-linked transcript with base64-inlined media.
+// Options configures a render. The zero value is valid once Options.Assets is
+// set; use Apply or the With* helpers to get the defaults.
 type Options struct {
 	// Title overrides the document title. Defaults to the channel name.
 	Title string
@@ -40,35 +23,31 @@ type Options struct {
 	Channel Channel
 	// Theme is the initial colour scheme.
 	Theme Theme
-	// Assets selects how the stylesheet and script are referenced.
-	Assets AssetMode
-	// AssetsBase is the path prefix used by AssetsLocal.
-	AssetsBase string
+	// Assets says where the stylesheet and the optional script come from.
+	Assets Assets
 	// Media resolves attachment, avatar and emoji URLs. Defaults to base64
-	// inlining; pass URLMedia() to keep the original (expiring) CDN URLs.
+	// inlining so the document keeps working without the network.
 	Media MediaStore
-	// MaxMediaBytes caps a single download. Larger media keeps its original URL.
-	// Zero means DefaultMaxMediaBytes.
+	// MaxMediaBytes caps a single download. Zero means DefaultMaxMediaBytes.
 	MaxMediaBytes int64
-	// Locale is used for the no-script timestamp fallback text.
-	Locale string
-	// TimeZone is used for the no-script timestamp fallback text.
+	// Locale and TimeZone format timestamps. The generated text is absolute and
+	// stays correct when the file is read later.
+	Locale   string
 	TimeZone *time.Location
 	// SelfUserID marks messages that mention this user as highlighted.
 	SelfUserID string
-	// WithoutMeta drops the metadata line under the page title.
+	// ShowMeta adds a metadata line under nothing: off by default to keep the
+	// document as small as possible.
 	ShowMeta bool
-	// Generator is recorded in the page metadata and the recovery comment.
+	// Generator is recorded in the page metadata when ShowMeta is set.
 	Generator string
-	// Warn receives non-fatal problems (a failed media download, an
-	// unwritable cache entry). Rendering always continues.
+	// Warn receives non-fatal problems (a failed media download, for example).
+	// Rendering always continues.
 	Warn func(error)
 }
 
-// DefaultMaxMediaBytes is the per-file download cap used when Options.MaxMediaBytes
-// is not set. Discord's own attachment limit for non-boosted servers is 10 MiB,
-// but a transcript is not the place for a 10 MiB video, so the cap is lower and
-// oversized media keeps its original URL instead.
+// DefaultMaxMediaBytes is the per-file download cap used when
+// Options.MaxMediaBytes is not set. Oversized media keeps its original URL.
 const DefaultMaxMediaBytes = 8 << 20
 
 // Option mutates Options.
@@ -77,14 +56,11 @@ type Option func(*Options)
 func defaultOptions() Options {
 	return Options{
 		Theme:         ThemeDark,
-		Assets:        AssetsCDN,
-		AssetsBase:    "../dist/",
+		Assets:        DefaultAssets(),
 		Media:         InlineMedia(),
 		MaxMediaBytes: DefaultMaxMediaBytes,
 		Locale:        "en-US",
 		TimeZone:      time.UTC,
-		ShowMeta:      true,
-		Generator:     "discord-transcript-go " + Version,
 	}
 }
 
@@ -108,11 +84,43 @@ func WithChannel(c Channel) Option { return func(o *Options) { o.Channel = c } }
 // WithTheme selects the initial theme.
 func WithTheme(t Theme) Option { return func(o *Options) { o.Theme = t } }
 
-// WithAssets selects how the stylesheet and script are referenced.
-func WithAssets(mode AssetMode) Option { return func(o *Options) { o.Assets = mode } }
+// WithAssets replaces the whole asset configuration.
+func WithAssets(a Assets) Option { return func(o *Options) { o.Assets = a } }
 
-// WithAssetsBase sets the prefix used by AssetsLocal.
-func WithAssetsBase(base string) Option { return func(o *Options) { o.AssetsBase = base } }
+// WithCSS points the document at a stylesheet, with an optional SRI hash.
+// Pass an empty integrity to omit the attribute.
+func WithCSS(url, integrity string) Option {
+	return func(o *Options) {
+		o.Assets.CSSURL = url
+		o.Assets.CSSIntegrity = integrity
+	}
+}
+
+// WithScript adds the enhancement script, with an optional SRI hash.
+func WithScript(url, integrity string) Option {
+	return func(o *Options) {
+		o.Assets.ScriptURL = url
+		o.Assets.ScriptIntegrity = integrity
+	}
+}
+
+// WithoutScript drops the enhancement script, leaving a stylesheet-only
+// document. This is already the default.
+func WithoutScript() Option {
+	return func(o *Options) {
+		o.Assets.ScriptURL = ""
+		o.Assets.ScriptIntegrity = ""
+	}
+}
+
+// WithoutStylesheet omits the stylesheet link entirely, for callers that inject
+// their own.
+func WithoutStylesheet() Option {
+	return func(o *Options) {
+		o.Assets.CSSURL = ""
+		o.Assets.CSSIntegrity = ""
+	}
+}
 
 // WithMedia sets the media store used for attachments, avatars and emoji.
 func WithMedia(store MediaStore) Option { return func(o *Options) { o.Media = store } }
@@ -120,17 +128,17 @@ func WithMedia(store MediaStore) Option { return func(o *Options) { o.Media = st
 // WithMaxMediaBytes caps a single media download.
 func WithMaxMediaBytes(n int64) Option { return func(o *Options) { o.MaxMediaBytes = n } }
 
-// WithTimeZone sets the zone used for fallback timestamp text.
+// WithTimeZone sets the zone used for timestamp text.
 func WithTimeZone(loc *time.Location) Option { return func(o *Options) { o.TimeZone = loc } }
 
-// WithLocale sets the locale used for fallback timestamp text.
+// WithLocale sets the locale used for timestamp text.
 func WithLocale(locale string) Option { return func(o *Options) { o.Locale = locale } }
 
 // WithSelfUserID marks messages mentioning this user as highlighted.
 func WithSelfUserID(id string) Option { return func(o *Options) { o.SelfUserID = id } }
 
-// WithoutMeta hides the metadata line under the page title.
-func WithoutMeta() Option { return func(o *Options) { o.ShowMeta = false } }
+// WithMeta adds the metadata line under the page title.
+func WithMeta() Option { return func(o *Options) { o.ShowMeta = true } }
 
 // WithGenerator overrides the recorded generator string.
 func WithGenerator(name string) Option { return func(o *Options) { o.Generator = name } }
@@ -138,14 +146,12 @@ func WithGenerator(name string) Option { return func(o *Options) { o.Generator =
 // WithWarn installs a callback for non-fatal problems.
 func WithWarn(fn func(error)) Option { return func(o *Options) { o.Warn = fn } }
 
-// warn reports a non-fatal problem if a callback is configured.
 func (o *Options) warn(err error) {
 	if err != nil && o.Warn != nil {
 		o.Warn(err)
 	}
 }
 
-// maxMediaBytes returns the effective download cap.
 func (o *Options) maxMediaBytes() int64 {
 	if o.MaxMediaBytes > 0 {
 		return o.MaxMediaBytes
@@ -153,14 +159,11 @@ func (o *Options) maxMediaBytes() int64 {
 	return DefaultMaxMediaBytes
 }
 
-// connectTimeout and fetchTimeout bound media downloads so one dead CDN cannot
-// hang a whole export.
-const (
-	fetchTimeout = 30 * time.Second
-)
+// fetchTimeout bounds media downloads so one dead CDN cannot hang an export.
+const fetchTimeout = 30 * time.Second
 
-// contextWithTimeout is a small helper so callers of the media stores get a
-// bounded context without having to think about it.
+// contextWithTimeout bounds a media download without overriding a deadline the
+// caller already set.
 func contextWithTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 	if _, ok := ctx.Deadline(); ok {
 		return context.WithCancel(ctx)

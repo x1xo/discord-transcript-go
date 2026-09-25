@@ -219,10 +219,18 @@ func authorFromUser(u discord.User) transcript.Author {
 	if u.PublicFlags&discord.UserFlagVerifiedBot != 0 {
 		author.Verified = true
 	}
-	if avatar := u.EffectiveAvatarURL(); avatar != "" {
-		author.AvatarURL = avatar
-	}
+	author.AvatarURL = avatarURL(u)
 	return author
+}
+
+// avatarURL returns the user's avatar, falling back to Discord's generated
+// default. Both are empty for a partial payload with no discriminator, in which
+// case the renderer draws a coloured initial instead.
+func avatarURL(u discord.User) string {
+	if url := u.EffectiveAvatarURL(); url != "" {
+		return url
+	}
+	return u.DefaultAvatarURL()
 }
 
 func (a *Adapter) embed(e discord.Embed, res *messageResolvers) transcript.Embed {

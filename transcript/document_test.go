@@ -132,10 +132,20 @@ func TestDocumentStructure(t *testing.T) {
 	}
 	html := string(doc)
 
+	// The document must carry the complete static structure, because the
+	// stylesheet alone has to render it.
 	for _, want := range []string{
 		"<!doctype html>",
+		`<link rel="stylesheet" href="` + DefaultCSSURL + `" integrity="` + DefaultCSSIntegrity + `" crossorigin="anonymous">`,
 		`<discord-messages channel-name="general" channel-type="text">`,
-		`<discord-message profile="111111111111111111" author="piton" timestamp="2024-03-15T14:28:00Z">`,
+		`<discord-message profile="111111111111111111" author="piton" timestamp="2024-03-15T14:28:00Z" data-dt-ready>`,
+		`<div class="dt-msg">`,
+		`<span class="dt-avatar"><img src="https://cdn.discordapp.com/avatars/111/abc.png"`,
+		`<div class="dt-content">`,
+		`<div class="dt-header">`,
+		`<span class="dt-author" style="color:#57f287">piton</span>`,
+		`<time class="dt-timestamp" datetime="2024-03-15T14:28:00Z"`,
+		`<div class="dt-body">`,
 		"<discord-bold>bold</discord-bold>",
 		"<discord-italic>italic</discord-italic>",
 		"<discord-underlined>underline</discord-underlined>",
@@ -146,36 +156,52 @@ func TestDocumentStructure(t *testing.T) {
 		`<discord-mention type="channel">rules</discord-mention>`,
 		`<discord-mention type="role" style="--dt-mention-role-color: #57f287">Moderators</discord-mention>`,
 		`<discord-mention type="everyone">everyone</discord-mention>`,
-		`<discord-custom-emoji name=":party:" url="https://cdn.discordapp.com/emojis/999999999999999999.png"></discord-custom-emoji>`,
+		`<discord-custom-emoji name=":party:"><img src="https://cdn.discordapp.com/emojis/999999999999999999.png"`,
 		`<discord-time timestamp="2024-03-15T13:20:00Z" format="R">`,
 		`<discord-link href="https://example.com/x"`,
-		`<discord-reply profile="111111111111111111" author="piton" mentions>`,
+		`<span class="dt-badges"><span class="dt-badge dt-badge--verified">APP</span></span>`,
+		`data-dt-continuation`,
+		`data-dt-short-time="14:32"`,
+		`<discord-reply mentions data-dt-ready><span class="dt-reply-avatar">`,
+		`<span class="dt-reply-author">@piton</span>`,
 		"<discord-quote>quoted line</discord-quote>",
 		"<discord-unordered-list><discord-list-item>one</discord-list-item>",
 		`<discord-ordered-list start="1"><discord-list-item>first</discord-list-item>`,
 		`<span class="dt-code-lang">go</span><discord-code>fmt.Println(&#34;hi&#34;)</discord-code>`,
 		"<discord-subscript>small print</discord-subscript>",
 		`<discord-system-message type="join" timestamp="2024-03-15T14:31:00Z">`,
-		`<discord-reaction emoji="🎉" count="3"></discord-reaction>`,
-		`<discord-reaction emoji="https://cdn.discordapp.com/emojis/999999999999999999.png" name=":party:" count="12" reacted>`,
-		`<discord-embed color="#5865f2">`,
-		`<a class="dt-embed-title" href="https://example.com/embed"`, // the embed has a url
+		`<discord-reaction data-dt-ready><span class="dt-reaction-emoji">🎉</span><span class="dt-reaction-count">3</span>`,
+		`<discord-reaction data-dt-ready reacted><img class="dt-reaction-emoji" src="https://cdn.discordapp.com/emojis/999999999999999999.png" alt=":party:"`,
+		`<discord-reaction data-dt-ready><span class="dt-reaction-emoji">🍰</span>`,
+		`<discord-embed color="#5865f2" data-dt-ready>`,
+		`<a class="dt-embed-title" href="https://example.com/embed"`,
 		`<discord-embed-description>`,
 		`<discord-embed-field field-title="Inline one" inline>`,
 		`<div class="dt-embed-image">`,
 		`<div class="dt-embed-thumbnail">`,
 		`<discord-embed-footer>`,
-		`<discord-image-attachment>`,
-		`<discord-image-attachment spoiler>`,
-		`<discord-file-attachment name="report.pdf" bytes="1.5" bytes-unit="KB" type="PDF">`,
+		`<discord-image-attachment data-dt-ready>`,
+		`<discord-image-attachment spoiler data-dt-ready>`,
+		`<discord-file-attachment data-dt-ready name="report.pdf" bytes="1.5" bytes-unit="KB" type="PDF">`,
 		`<span class="dt-file-size">1.5 KB</span>`,
-		`window.$discordMessage = {"profiles":{`,
-		`"author":"piton"`,
-		`"roleColor":"#57f287"`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("document is missing %s", want)
 		}
+	}
+
+	// Minimal by construction: no comments, no indentation, no script.
+	if strings.Contains(html, "<!--") {
+		t.Errorf("generated document must not contain comments")
+	}
+	if strings.Contains(html, "\n\t") || strings.Contains(html, "\t<") {
+		t.Errorf("generated document must not be indented")
+	}
+	if strings.Contains(html, "<script") {
+		t.Errorf("the enhancement script is off by default:\n%s", html)
+	}
+	if strings.Contains(html, "dt-page__meta") {
+		t.Errorf("the metadata line is off by default")
 	}
 }
 
@@ -239,44 +265,61 @@ func TestJavascriptURLIsDropped(t *testing.T) {
 	}
 }
 
-func TestAssetModes(t *testing.T) {
+func TestAssetsConfiguration(t *testing.T) {
 	tr := sampleTranscript(t)
 
-	cdn, err := tr.HTML(WithMedia(URLMedia()), WithAssets(AssetsCDN))
+	// Defaults: the pinned stylesheet with its SRI hash, and no script.
+	def, err := tr.HTML(WithMedia(URLMedia()))
 	if err != nil {
-		t.Fatalf("cdn: %v", err)
+		t.Fatalf("default: %v", err)
 	}
-	if !strings.Contains(string(cdn), "cdn.jsdelivr.net/npm/") || !strings.Contains(string(cdn), "integrity=") {
-		t.Errorf("CDN mode should link jsDelivr with SRI")
+	if !strings.Contains(string(def), DefaultCSSURL) || !strings.Contains(string(def), DefaultCSSIntegrity) {
+		t.Errorf("defaults should reference the pinned stylesheet and its hash")
 	}
-	if strings.Contains(string(cdn), "%%CSS_SOURCES%%") || strings.Contains(string(cdn), "%%JS_SOURCES%%") {
-		t.Errorf("CDN loader placeholders were not substituted")
-	}
-	if !strings.Contains(string(cdn), `"u":"https://cdn.jsdelivr.net/npm/`) {
-		t.Errorf("CDN loader should list the npm mirrors first")
+	if !strings.Contains(string(def), `crossorigin="anonymous"`) {
+		t.Errorf("SRI on a cross-origin stylesheet requires crossorigin")
 	}
 
-	local, err := tr.HTML(WithMedia(URLMedia()), WithAssets(AssetsLocal), WithAssetsBase("assets/"))
+	// A caller-supplied CDN, with their own hash.
+	custom, err := tr.HTML(
+		WithMedia(URLMedia()),
+		WithCSS("https://cdn.example.com/discord-transcript.min.css", "sha384-abc123"),
+	)
 	if err != nil {
-		t.Fatalf("local: %v", err)
+		t.Fatalf("custom css: %v", err)
 	}
-	if !strings.Contains(string(local), `href="assets/discord-transcript.min.css"`) ||
-		!strings.Contains(string(local), `src="assets/discord-transcript.min.js"`) {
-		t.Errorf("local mode should reference relative paths")
+	if !strings.Contains(string(custom), `href="https://cdn.example.com/discord-transcript.min.css" integrity="sha384-abc123"`) {
+		t.Errorf("custom stylesheet URL and hash should be used verbatim:\n%s", custom)
+	}
+	if strings.Contains(string(custom), "jsdelivr") {
+		t.Errorf("an explicit stylesheet should replace the default")
 	}
 
-	inline, err := tr.HTML(WithMedia(URLMedia()), WithAssets(AssetsInline))
+	// Opting into the enhancement script.
+	withScript, err := tr.HTML(WithMedia(URLMedia()), WithAssets(AssetsWithScript()))
 	if err != nil {
-		t.Fatalf("inline: %v", err)
+		t.Fatalf("script: %v", err)
 	}
-	if !strings.Contains(string(inline), "<style>") || !strings.Contains(string(inline), "--dt-bg-primary") {
-		t.Errorf("inline mode should embed the stylesheet")
+	if !strings.Contains(string(withScript), `<script defer src="`+DefaultScriptURL+`" integrity="`+DefaultScriptIntegrity+`" crossorigin="anonymous"></script>`) {
+		t.Errorf("AssetsWithScript should emit a deferred, verified script tag:\n%s", withScript)
 	}
-	// The recovery comment still documents the CDN URLs on purpose; what must
-	// not happen is the document *loading* anything from a CDN.
-	if strings.Contains(string(inline), `<link rel="stylesheet" href="https://`) ||
-		strings.Contains(string(inline), `<script src="https://`) {
-		t.Errorf("inline mode should not load anything from a CDN")
+
+	// Omitting the stylesheet entirely.
+	none, err := tr.HTML(WithMedia(URLMedia()), WithoutStylesheet())
+	if err != nil {
+		t.Fatalf("no css: %v", err)
+	}
+	if strings.Contains(string(none), "<link") {
+		t.Errorf("WithoutStylesheet should omit the link")
+	}
+
+	// Light theme rides on the root element.
+	light, err := tr.HTML(WithMedia(URLMedia()), WithTheme(ThemeLight))
+	if err != nil {
+		t.Fatalf("light: %v", err)
+	}
+	if !strings.Contains(string(light), `<html lang="en" data-theme="light">`) {
+		t.Errorf("light theme should be set on the root element")
 	}
 }
 
@@ -321,19 +364,29 @@ func TestMediaFailureKeepsOriginalURLAndWarns(t *testing.T) {
 	}
 }
 
-func TestContinuationMetadataIsEmitted(t *testing.T) {
-	// The script groups continuation rows from profile+timestamp, so both must
-	// always be present.
+func TestGroupingMetadata(t *testing.T) {
 	tr := sampleTranscript(t)
 	doc, err := tr.HTML(WithMedia(URLMedia()))
 	if err != nil {
 		t.Fatalf("HTML: %v", err)
 	}
-	if strings.Count(string(doc), " profile=\"") < 3 {
+	html := string(doc)
+
+	// Every user message carries the stable key the continuation rule uses.
+	if strings.Count(html, ` profile="`) < 4 {
 		t.Errorf("every user message should carry a profile key")
 	}
-	if !strings.Contains(string(doc), `"profiles":{"111111111111111111"`) {
-		t.Errorf("profile map should be keyed by the stable author key")
+	// The second miona message follows within the window, so the author row is
+	// omitted and the gutter timestamp is available for hover.
+	if !strings.Contains(html, `data-dt-continuation data-dt-short-time="14:32"`) {
+		t.Errorf("expected a continuation row with a short timestamp:\n%s", html)
+	}
+	// Continuation rows must not repeat the header.
+	if strings.Count(html, `class="dt-header"`) != 3 {
+		t.Errorf("continuation rows should omit the header, got %d headers", strings.Count(html, `class="dt-header"`))
+	}
+	if !strings.Contains(html, `data-dt-group-start`) {
+		t.Errorf("expected group-start markers between authors")
 	}
 }
 

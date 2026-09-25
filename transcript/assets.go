@@ -1,76 +1,67 @@
 package transcript
 
-import (
-	_ "embed"
-	"encoding/json"
-	"fmt"
+// ContractVersion is the discord-transcript-ui release whose markup contract
+// this module emits.
+const ContractVersion = "1.0.1"
+
+// Pinned defaults. The stylesheet is all a transcript needs to render: this
+// module emits the full markup the stylesheet targets, so avatars, author
+// headers, badges, timestamps, replies, embeds, attachments and reactions all
+// work without JavaScript.
+const (
+	// DefaultCSSURL is the jsDelivr URL of the pinned stylesheet.
+	DefaultCSSURL = "https://cdn.jsdelivr.net/npm/discord-transcript-ui@" + ContractVersion + "/dist/discord-transcript.min.css"
+	// DefaultCSSIntegrity is its Subresource Integrity hash.
+	DefaultCSSIntegrity = "sha384-MdwneGHI4BQDRywMXXD0VVcvuU2mSlU/cJlHVjDaS6fkNJ/5+OGgmv5w4D/VAOa+"
+
+	// DefaultScriptURL is the jsDelivr URL of the optional enhancement script.
+	DefaultScriptURL = "https://cdn.jsdelivr.net/npm/discord-transcript-ui@" + ContractVersion + "/dist/discord-transcript.min.js"
+	// DefaultScriptIntegrity is its Subresource Integrity hash.
+	DefaultScriptIntegrity = "sha384-hxBXQMtoZvVzUDgfAw6RWEVsVW7oJ3++5VYQr2i+vU0gOBIWebUzWahpufZUpQUN"
 )
 
-// The embedded copies of the discord-transcript-ui build artifacts. Refresh them
-// with `go generate ./...` after rebuilding the JavaScript library; the sync
-// tool copies from ../dist and ../assets so the two stay in step.
+// Assets says where the browser loads the stylesheet, and optionally the
+// enhancement script, from.
 //
-//go:generate go run ../internal/syncassets
-
-//go:embed assets/manifest.json
-var manifestJSON []byte
-
-//go:embed assets/recovery-comment.txt
-var recoveryComment string
-
-//go:embed assets/cdn-loader.html
-var cdnLoaderTemplate string
-
-//go:embed assets/discord-transcript.min.css
-var minifiedCSS string
-
-//go:embed assets/discord-transcript.min.js
-var minifiedJS string
-
-// Artifact describes one built file of the JavaScript library.
-type Artifact struct {
-	Bytes  int    `json:"bytes"`
-	Gzip   int    `json:"gzip"`
-	Brotli int    `json:"brotli"`
-	SHA256 string `json:"sha256"`
-	SRI    string `json:"sri"`
+// Point it at your own host when you would rather not depend on a public CDN:
+//
+//	transcript.WithCSS("https://cdn.example.com/discord-transcript.min.css", "sha384-...")
+//
+// The script is optional and off by default. Turning it on adds click-to-reveal
+// spoilers, copy buttons and viewer-local timestamps; it rebuilds nothing,
+// because the generated markup is already complete.
+type Assets struct {
+	// CSSURL is the stylesheet location. Empty omits the stylesheet entirely.
+	CSSURL string
+	// CSSIntegrity is the stylesheet's SRI hash. Empty omits the attribute.
+	CSSIntegrity string
+	// ScriptURL is the enhancement script location. Empty omits the script.
+	ScriptURL string
+	// ScriptIntegrity is the script's SRI hash.
+	ScriptIntegrity string
+	// CrossOrigin adds crossorigin="anonymous", which SRI requires for a
+	// cross-origin resource.
+	CrossOrigin bool
 }
 
-// Manifest mirrors dist/manifest.json: the pinned versions, hashes and the full
-// list of mirrors for each asset.
-type Manifest struct {
-	Name      string                       `json:"name"`
-	Version   string                       `json:"version"`
-	License   string                       `json:"license"`
-	Artifacts map[string]Artifact          `json:"artifacts"`
-	URLs      map[string]map[string]string `json:"urls"`
-	Integrity map[string]string            `json:"integrity"`
-	Recovery  string                       `json:"recovery"`
+// DefaultAssets returns the pinned jsDelivr stylesheet with its SRI hash and no
+// script: the smallest document that renders fully.
+func DefaultAssets() Assets {
+	return Assets{
+		CSSURL:       DefaultCSSURL,
+		CSSIntegrity: DefaultCSSIntegrity,
+		CrossOrigin:  true,
+	}
 }
 
-// EmbeddedManifest parses the manifest that was compiled into this binary.
-func EmbeddedManifest() (Manifest, error) {
-	var m Manifest
-	if err := json.Unmarshal(manifestJSON, &m); err != nil {
-		return Manifest{}, fmt.Errorf("parse embedded manifest: %w", err)
+// AssetsWithScript returns the pinned stylesheet and the enhancement script,
+// both verified with Subresource Integrity.
+func AssetsWithScript() Assets {
+	return Assets{
+		CSSURL:          DefaultCSSURL,
+		CSSIntegrity:    DefaultCSSIntegrity,
+		ScriptURL:       DefaultScriptURL,
+		ScriptIntegrity: DefaultScriptIntegrity,
+		CrossOrigin:     true,
 	}
-	return m, nil
-}
-
-// RecoveryComment returns the asset recovery comment compiled into this binary.
-func RecoveryComment() string { return recoveryComment }
-
-// checkContractVersion reports whether the embedded assets match the contract
-// version this module claims to emit. A mismatch is a warning, not an error: the
-// markup contract is stable within a major version.
-func checkContractVersion() error {
-	m, err := EmbeddedManifest()
-	if err != nil {
-		return err
-	}
-	if m.Version != ContractVersion {
-		return fmt.Errorf("embedded discord-transcript-ui assets are %s but this module targets %s; run go generate ./...",
-			m.Version, ContractVersion)
-	}
-	return nil
 }

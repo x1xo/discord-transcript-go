@@ -22,6 +22,8 @@
 //	discord-transcript -in messages.json -out transcript.html
 //	cat messages.json | discord-transcript -in - -out - > transcript.html
 //	discord-transcript -in messages.json -channel general -media dir -media-dir assets -out out/
+//	discord-transcript -in messages.json -css https://cdn.example.com/discord-transcript.min.css -out t.html
+//	discord-transcript -in messages.json -script -out interactive.html
 package main
 
 import (
@@ -81,8 +83,11 @@ func run() error {
 		channelType  = flag.String("channel-type", "text", "text|voice|thread|forum|locked")
 		guild        = flag.String("guild", "", "guild name, shown in the page metadata")
 		theme        = flag.String("theme", "dark", "dark|light")
-		assets       = flag.String("assets", "cdn", "cdn|local|inline")
-		assetsBase   = flag.String("assets-base", "../dist/", "path prefix for -assets local")
+		cssURL       = flag.String("css", transcript.DefaultCSSURL, "stylesheet URL (empty to omit the stylesheet)")
+		cssSRI       = flag.String("css-integrity", transcript.DefaultCSSIntegrity, "stylesheet SRI hash (empty to omit)")
+		withScript   = flag.Bool("script", false, "include the optional enhancement script")
+		scriptURL    = flag.String("script-url", transcript.DefaultScriptURL, "enhancement script URL")
+		scriptSRI    = flag.String("script-integrity", transcript.DefaultScriptIntegrity, "enhancement script SRI hash")
 		media        = flag.String("media", "inline", "inline|dir|url")
 		mediaDir     = flag.String("media-dir", "assets", "directory for -media dir")
 		mediaBase    = flag.String("media-base", "assets/", "URL prefix for -media dir")
@@ -92,7 +97,7 @@ func run() error {
 		self         = flag.String("self", "", "self user ID; messages mentioning it are highlighted")
 		profilesPath = flag.String("profiles", "", "JSON file with author overrides")
 		noReplies    = flag.Bool("no-replies", false, "drop reply previews")
-		noMeta       = flag.Bool("no-meta", false, "hide the metadata line")
+		meta         = flag.Bool("meta", false, "add a metadata line (message count, date range)")
 		quiet        = flag.Bool("quiet", false, "suppress the summary on stderr")
 	)
 	flag.Parse()
@@ -156,10 +161,19 @@ func run() error {
 		return fmt.Errorf("invalid -timezone %q: %w", *timeZone, err)
 	}
 
+	assets := transcript.Assets{
+		CSSURL:       *cssURL,
+		CSSIntegrity: *cssSRI,
+		CrossOrigin:  true,
+	}
+	if *withScript {
+		assets.ScriptURL = *scriptURL
+		assets.ScriptIntegrity = *scriptSRI
+	}
+
 	renderOpts := []transcript.Option{
 		transcript.WithTheme(transcript.Theme(*theme)),
-		transcript.WithAssets(transcript.AssetMode(*assets)),
-		transcript.WithAssetsBase(*assetsBase),
+		transcript.WithAssets(assets),
 		transcript.WithLocale(*locale),
 		transcript.WithTimeZone(loc),
 		transcript.WithMaxMediaBytes(*maxMedia),
@@ -179,8 +193,8 @@ func run() error {
 	default:
 		return fmt.Errorf("invalid -media %q (want inline, dir or url)", *media)
 	}
-	if *noMeta {
-		renderOpts = append(renderOpts, transcript.WithoutMeta())
+	if *meta {
+		renderOpts = append(renderOpts, transcript.WithMeta())
 	}
 
 	out, err := tr.HTML(renderOpts...)

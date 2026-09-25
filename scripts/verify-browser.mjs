@@ -2,16 +2,11 @@
 /**
  * Browser check for a generated transcript.
  *
- * Loads the file in headless Chrome and asserts that the discord-transcript-ui
- * stylesheet and script actually took effect, and that nothing regressed:
- *
- *   * the enhancement script upgraded every message;
- *   * no media URI leaked into text (the vertical-garbage regression);
- *   * every inlined data: image decoded;
- *   * the avatar, badge and reaction chrome rendered;
- *   * a spoiler reveals on click;
- *   * nothing overflows horizontally;
- *   * no console errors.
+ * Loads the file in headless Chrome and asserts that it renders from the
+ * stylesheet alone — the generated markup is complete, so avatars, author rows,
+ * badges, timestamps and reactions must appear with no JavaScript at all. If the
+ * document happens to include the enhancement script (the `-script` flag), it
+ * additionally asserts the script does not rebuild what is already there.
  *
  * Usage: node scripts/verify-browser.mjs [path/to/transcript.html]
  * Requires Chrome (CHROME env var, or google-chrome on PATH) and Node 21+.
@@ -32,7 +27,7 @@ const CHROME = [process.env.CHROME, 'google-chrome', 'google-chrome-stable', 'ch
 	.filter(Boolean)
 	.find((candidate) => (candidate.includes('/') ? existsSync(candidate) : true));
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const child = spawn(
 	CHROME,
@@ -117,7 +112,7 @@ for (let attempt = 0; attempt < 80; attempt++) {
 	}
 	await sleep(75);
 }
-await sleep(1500);
+await sleep(1200);
 
 const result = await send('Runtime.evaluate', {
 	returnByValue: true,
@@ -125,38 +120,51 @@ const result = await send('Runtime.evaluate', {
 		const checks = [];
 		const check = (name, actual, expected) =>
 			checks.push({ name, actual: String(actual), expected: String(expected), pass: String(actual) === String(expected) });
-		const style = (node, prop, pseudo) => (node ? getComputedStyle(node, pseudo || null).getPropertyValue(prop) : '<missing>');
+		const style = (node, prop) => (node ? getComputedStyle(node).getPropertyValue(prop) : '<missing>');
 		const all = (sel) => Array.from(document.querySelectorAll(sel));
-		// Transitions interpolate computed values; make them instant so the
-		// interaction assertions below are deterministic.
 		document.documentElement.style.setProperty('--dt-transition', '0s');
 
 		const messages = all('discord-message');
 		check('messages found', messages.length > 0, true);
-		check('script upgraded every message', all('discord-message[data-dt-ready]').length, messages.length);
 		check('stylesheet applied', style(document.querySelector('discord-messages'), 'background-color') !== 'rgba(0, 0, 0, 0)', true);
-		check('avatars rendered', all('.dt-avatar').length, messages.length);
+
+		// The static structure the stylesheet needs must be present already.
+		check('every message has its own layout', all('.dt-msg').length, messages.length);
+		check('every message has an avatar slot', all('.dt-avatar').length, messages.length);
+		check('author rows rendered', all('.dt-header').length > 0, true);
+		check('author names rendered', all('.dt-author').every((el) => el.textContent.trim().length > 0), true);
+		check('role colour applied', all('.dt-author').some((el) => el.style.color !== ''), true);
+		check('timestamps rendered', all('.dt-timestamp').every((el) => el.textContent.trim().length > 0), true);
 		check('verified bot tag', all('.dt-badge--verified')[0]?.textContent ?? '', 'APP');
 		check('reactions rendered', all('discord-reaction').length > 0, true);
+		check('reply rendered', all('discord-reply').length > 0, true);
 
-		// A media URI must never appear as visible text. Script and style contents
-		// are excluded: the config block legitimately carries base64 avatars.
+		// Media: inlined images must decode, and no URI may appear as text.
+		const inlined = all('img[src^="data:image"]');
+		check('inlined images present', inlined.length > 0, true);
+		check('all inlined images decoded', inlined.every((img) => img.complete && img.naturalWidth > 0), true);
 		const leak = all('*')
 			.filter((el) => el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE')
 			.some((el) => el.children.length === 0 && (el.textContent || '').includes('data:image'));
 		check('no media URI leaked into text', leak, false);
 
-		// Inlined images must actually decode.
-		const inlined = all('img[src^="data:image"]');
-		check('inlined images present', inlined.length > 0, true);
-		check('all inlined images decoded', inlined.every((img) => img.complete && img.naturalWidth > 0), true);
-
-		// Interaction.
+		// Without the script a spoiler is hidden but peekable on hover; with it,
+		// a click reveals it.
 		const spoiler = document.querySelector('discord-spoiler');
 		if (spoiler) {
-			const before = style(spoiler, 'background-color');
-			spoiler.click();
-			check('spoiler reveals on click', style(spoiler, 'background-color') !== before, true);
+			const hidden = style(spoiler, 'background-color');
+			check('spoiler starts hidden', style(spoiler, 'color') === 'rgba(0, 0, 0, 0)', true);
+			if (window.DiscordTranscript) {
+				spoiler.click();
+				check('script: spoiler reveals on click', style(spoiler, 'background-color') !== hidden, true);
+			}
+		}
+
+		// When the script is included it must recognise the finished markup
+		// instead of duplicating it.
+		if (window.DiscordTranscript) {
+			check('script: no duplicate avatars', all('.dt-avatar').length, messages.length);
+			check('script: no duplicate bodies', all('.dt-body').length, messages.length);
 		}
 
 		check('no horizontal overflow', document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1, true);

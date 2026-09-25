@@ -1,18 +1,23 @@
 # discord-transcript-go
 
-Turn Discord messages into a **single self-contained HTML transcript**, using
-[`discord-transcript-ui`](https://github.com/x1xo/transcripts) for the look and
-[`disgo`](https://github.com/disgoorg/disgo) as the Discord library.
+Turn Discord messages into a **single minimal HTML transcript** that renders in a
+browser with nothing but a stylesheet, using
+[`disgo`](https://github.com/disgoorg/disgo) for the Discord data.
 
-Two design decisions do most of the work:
+Two things make that possible:
 
-* **The renderer knows nothing about disgo.** `transcript/` owns the model, the
-  Discord markdown parser, the HTML renderer and the document writer, and imports
-  no Discord library at all. `disgo/` is a thin adapter. Swapping to discordgo or
-  raw JSON later costs one adapter, not a rewrite.
-* **A transcript is one file.** Media is downloaded and inlined as base64 by
-  default, so the HTML keeps rendering after Discord's signed CDN URLs expire —
-  which is the failure mode that quietly kills archived transcripts.
+* **The renderer emits the full markup the stylesheet targets**, so avatars, author
+  rows, badges, timestamps, replies, embeds, attachments and reactions render
+  with **no JavaScript at all**. The optional enhancement script adds
+  click-to-reveal spoilers, copy buttons and viewer-local timestamps — it
+  rebuilds nothing, because the markup is already complete.
+* **The output is minimal on purpose**: no comments, no indentation, no metadata,
+  no config block. Everything in the file either renders or tells the browser how
+  to render it.
+
+The renderer also knows nothing about disgo. `transcript/` owns the model, the
+markdown parser, the HTML renderer and the document writer and imports no Discord
+library; `disgo/` is a thin adapter. Swapping libraries later costs one adapter.
 
 ## Install
 
@@ -28,8 +33,6 @@ Requires Go 1.24 or newer (disgo's floor).
 package main
 
 import (
-	"log"
-
 	"github.com/disgoorg/disgo/bot"
 	"github.com/disgoorg/snowflake/v2"
 
@@ -54,29 +57,61 @@ func exportChannel(client *bot.Client, channelID snowflake.ID) error {
 	tr := adapter.Transcript(adapter.Channel(channel), messages)
 	tr.Title = "general — 2024-03-15"
 
-	// One file: stylesheet reference, profile map, conversation, base64 media.
-	return tr.WriteFile("transcript.html", transcript.WithMedia(transcript.InlineMedia()))
+	// One file: a CDN stylesheet link plus base64 media.
+	return tr.WriteFile("transcript.html")
 }
-
-func reverse(messages []discord.Message) { /* swap the slice in place */ }
 ```
 
-`transcript.WithMedia` is optional — base64 inlining is already the default. See
-`disgo/example_test.go` for a compiling example that needs no network.
+`disgo/example_test.go` is a compiling example that needs no network.
+
+## Stylesheet: defaults and overrides
+
+The stylesheet comes from a CDN and is pinned with Subresource Integrity. The
+defaults target the current `discord-transcript-ui` release:
+
+```go
+tr.WriteFile("transcript.html") // https://cdn.jsdelivr.net/npm/discord-transcript-ui@1.0.1/…, SRI checked
+```
+
+Point it anywhere — your own host, a mirror, another version — by passing the URL
+and hash yourself:
+
+```go
+transcript.WithCSS("https://cdn.example.com/discord-transcript.min.css", "sha384-…")
+transcript.WithScript("https://cdn.example.com/discord-transcript.min.js", "sha384-…")
+transcript.WithAssets(transcript.Assets{ /* full control, including CrossOrigin */ })
+transcript.WithoutStylesheet() // inject your own <link> yourself
+transcript.WithoutScript()     // the default: no script tag at all
+```
+
+The relevant constants, if you want to build your own tags or a CSP:
+
+| Constant | Value |
+| --- | --- |
+| `transcript.ContractVersion` | `1.0.1` — the markup contract this module emits |
+| `transcript.DefaultCSSURL` | jsDelivr URL of the pinned stylesheet |
+| `transcript.DefaultCSSIntegrity` | its `sha384-…` hash |
+| `transcript.DefaultScriptURL` | jsDelivr URL of the optional script |
+| `transcript.DefaultScriptIntegrity` | its `sha384-…` hash |
+
+`AssetsWithScript()` returns the stylesheet and script together when you want the
+interactive extras.
 
 ## Command line
 
 ```bash
-# From a JSON export (raw Discord API payloads work as-is)
+# Default: one minimal file, stylesheet from the CDN, media inlined
 discord-transcript -in messages.json -out transcript.html
 
-# From stdin, with channel metadata and author overrides
-cat export.json | discord-transcript -in - -out - > transcript.html
+# Your own CDN, or a different version
+discord-transcript -in messages.json -css https://cdn.example.com/d.min.css \
+  -css-integrity sha384-… -out transcript.html
 
-# Keep the original (expiring) CDN URLs instead of inlining
+# Add the optional enhancement script
+discord-transcript -in messages.json -script -out interactive.html
+
+# Keep the original (expiring) CDN URLs, or write media next to the HTML
 discord-transcript -in messages.json -media url -out transcript.html
-
-# Ship HTML plus an assets folder instead of one big file
 discord-transcript -in messages.json -media dir -media-dir assets -out out/
 ```
 
@@ -100,19 +135,15 @@ offline export needs when no cache is available:
 }
 ```
 
-Useful flags: `-assets cdn|local|inline`, `-theme dark|light`, `-media inline|dir|url`,
-`-max-media-bytes`, `-profiles overrides.json`, `-self <user-id>`, `-timezone`,
-`-locale`, `-no-replies`, `-no-meta`. Run `discord-transcript -h` for all of them.
+Other flags: `-theme dark|light`, `-media inline|dir|url`, `-max-media-bytes`,
+`-profiles overrides.json`, `-self <user-id>`, `-timezone`, `-locale`,
+`-no-replies`, `-meta`, `-quiet`. Run `discord-transcript -h` for all of them.
 
 ## Media: why base64, and when not to
 
-Discord serves attachments from **signed URLs that expire within hours**. A
-transcript that keeps those URLs renders broken images the next day. Avatars and
-emoji URLs are stable, but they still require the reader to have network access to
-Discord's CDN.
-
-The default `InlineMedia` store downloads each URL once and rewrites it to a
-`data:` URI:
+Discord serves attachments from **signed URLs that expire within hours**, so a
+transcript that keeps them renders broken images the next day. The default store
+downloads each URL once and rewrites it to a `data:` URI:
 
 | Store | Result | Use when |
 | --- | --- | --- |
@@ -121,11 +152,14 @@ The default `InlineMedia` store downloads each URL once and rewrites it to a
 | `transcript.URLMedia()` | the original URLs | Quick previews; anything already re-hosted somewhere durable. |
 | your own `transcript.MediaStore` | whatever you want | Re-hosting to S3/R2, signing, caching, deduplication. |
 
-Custom downloaders are supported too: `transcript.InlineMediaWith(fetcher)` takes
-any `transcript.Fetcher`, so you can plug in your own HTTP client, proxy or cache.
-Downloads are bounded by `-max-media-bytes` (8 MiB by default) and a 30-second
-timeout; **a failed download is never fatal** — the renderer keeps the original URL
-and reports the problem through `transcript.WithWarn`.
+Custom downloaders work too: `transcript.InlineMediaWith(fetcher)` accepts any
+`transcript.Fetcher`. Downloads are capped by `-max-media-bytes` (8 MiB default)
+and a 30-second timeout, and **a failed download is never fatal** — the renderer
+keeps the original URL and reports it through `transcript.WithWarn`.
+
+Only group-start messages embed their avatar, so a repeated author costs its
+avatar bytes once. Authors with no usable avatar URL get a coloured initial
+instead of a network request.
 
 ## What renders
 
@@ -137,23 +171,23 @@ emoji (including animated) and `<t:…>` timestamps in every format flag.
 
 Messages: author identity (nickname, guild avatar, role colour), timestamps,
 `(edited)`, replies, embeds (provider, author, title, description, fields, footer,
-image, video, thumbnail), attachments (image, video, audio, file, spoilers), reactions,
-system messages (`MessageType` → join/leave/call/boost/edit/pin/thread).
+image, video, thumbnail), attachments (image, video, audio, file, spoilers),
+reactions, system messages (`MessageType` → join/leave/call/boost/edit/pin/thread),
+and continuation grouping computed at render time.
 
-Not yet: threads, buttons and select menus, stickers (kept as text so nothing is
-lost), polls, forwarded message snapshots and slash-command rows. The model and
-renderer already understand threads; the adapter does not map them yet.
+Not yet: threads, buttons and select menus, stickers (kept as `[sticker: name]` so
+nothing is lost), polls, forwarded snapshots and slash-command rows. The model and
+renderer understand threads; the adapter does not map them yet.
 
 ## Identity resolution
 
-Nicknames and role colours come from wherever they are available, in this order:
+Nicknames and role colours come from, in order:
 
 1. explicit overrides (`disgo.WithUsers`, `disgo.WithRoles`, `-profiles`);
 2. the data carried by the message itself (`member`, `mentions`, `mention_channels`);
 3. disgo's caches (`disgo.WithCaches(client.Caches)`).
 
-**Gotcha:** disgo's caches are no-ops unless they were created with the right flags.
-`cache.New()` on its own returns nothing:
+**Gotcha:** disgo's caches are no-ops unless they were created with the right flags:
 
 ```go
 caches := cache.New(cache.WithCaches(
@@ -164,8 +198,8 @@ caches := cache.New(cache.WithCaches(
 Without them you get usernames and default avatars, but no nicknames and no role
 colours. Offline exports should prefer overrides, which need no cache.
 
-Mentions that cannot be resolved keep their raw ID (`<discord-mention>222…</…>`)
-rather than vanishing, because a transcript is a record of what was said.
+Mentions that cannot be resolved keep their raw ID rather than vanishing, because
+a transcript is a record of what was said.
 
 ## Architecture
 
@@ -173,50 +207,33 @@ rather than vanishing, because a transcript is a record of what was said.
 transcript/            no Discord dependency
   model.go             the IR: Transcript, Message, Author, Embed, Attachment, …
   markdown.go          Discord markdown -> node tree
-  render.go            node tree -> discord-transcript-ui HTML fragments
-  document.go          the complete HTML document (head, config, recovery comment)
+  render.go            node tree -> the complete static markup the stylesheet targets
+  grouping.go          continuation rows (same author, close in time)
+  document.go          the minimal document: doctype, charset, viewport, stylesheet, body
+  assets.go            CDN URL and SRI defaults, and the override surface
   media.go             MediaStore: inline (base64) / dir / url, plus custom Fetcher
   identity.go          Resolver interfaces + map-backed implementations
-  assets.go            embedded copies of the JS library's build artifacts
 disgo/                 the adapter: []discord.Message -> IR, cache-backed resolver
-cmd/discord-transcript JSON in, self-contained HTML out
+cmd/discord-transcript JSON in, minimal HTML out
 ```
-
-The generated document links the pinned stylesheet and script (CDN with a
-multi-mirror fallback chain and Subresource Integrity, or local paths, or inlined)
-and stamps in a recovery comment with the exact URLs, sha256 hashes and mirrors.
-
-### Keeping the embedded assets in sync
-
-`transcript/assets/` holds copies of the JavaScript library's build output so this
-module builds on its own. After rebuilding that library:
-
-```bash
-go generate ./...            # copies ../dist and ../assets
-# or, if the UI repo lives elsewhere:
-DISCORD_TRANSCRIPT_UI_DIR=/path/to/transcripts go generate ./...
-```
-
-The module warns (through `WithWarn`) if the embedded assets' version does not
-match the markup contract version it targets.
 
 ## Development
 
 ```bash
-go test ./...                                  # parser, renderer, media, adapter
-make verify                                    # tests + real-browser check (needs Chrome)
+go test ./...                # parser, renderer, grouping, media, adapter, escaping
+make verify                  # tests + real-browser check of both examples (needs Chrome)
 node scripts/verify-browser.mjs examples/transcript.html
-go run ./cmd/discord-transcript -in testdata/export.json -out examples/transcript.html
 ```
 
 `scripts/verify-browser.mjs` loads a generated transcript in headless Chrome and
-asserts the enhancement script upgraded every message, inlined images decoded, no
-media URI leaked into visible text, the verified-bot tag rendered, spoilers toggle,
-nothing overflows and the console stayed clean. Run it after changing the renderer:
-it catches the class of bug that unit tests on strings cannot.
+asserts the stylesheet alone renders it: every message has its layout, avatar slot,
+author row, role colour and timestamp; inlined images decode; no media URI leaks
+into visible text; the verified-bot tag appears; nothing overflows; and the console
+stays clean. When the script is included, it also asserts the script does not
+duplicate the existing markup. It catches the class of bug string tests cannot.
 
 ## Licence
 
-MIT. The markup contract, stylesheet and enhancement script belong to
+MIT. The markup contract and stylesheet belong to
 [discord-transcript-ui](https://github.com/x1xo/transcripts); `disgo` is MIT and
 Copyright its authors.
