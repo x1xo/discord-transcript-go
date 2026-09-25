@@ -1,4 +1,4 @@
 package transcript
 
 // Version is the version of this Go module.
-const Version = "0.3.0"
+const Version = "1.1.0"
