@@ -263,6 +263,19 @@ disgo/                 the adapter: []discord.Message -> IR, cache-backed resolv
 cmd/discord-transcript JSON in, minimal HTML out
 ```
 
+## Where this module lives
+
+It is consumed as a submodule of
+[`transcripts`](https://github.com/x1xo/transcripts), which owns the stylesheet:
+
+```bash
+git clone --recurse-submodules https://github.com/x1xo/transcripts.git
+```
+
+The module path matches this repository's root, so `go get
+github.com/x1xo/discord-transcript-go` works directly, with or without the
+submodule checked out.
+
 ## Generated files
 
 Two files in `transcript/` are written by the UI repository's build and must not
