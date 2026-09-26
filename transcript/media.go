@@ -55,12 +55,67 @@ type Fetcher interface {
 	Fetch(ctx context.Context, ref MediaRef, maxBytes int64) ([]byte, string, error)
 }
 
+// FetchFunc adapts a function to Fetcher, for downloaders too small to deserve
+// a type of their own (a signed request, a command-line helper, a cache lookup).
+type FetchFunc func(ctx context.Context, ref MediaRef, maxBytes int64) ([]byte, string, error)
+
+// Fetch implements Fetcher.
+func (f FetchFunc) Fetch(ctx context.Context, ref MediaRef, maxBytes int64) ([]byte, string, error) {
+	if f == nil {
+		return nil, "", errors.New("no fetcher")
+	}
+	return f(ctx, ref, maxBytes)
+}
+
 // HTTPFetcher is the default downloader.
+//
+// Every field is a hook, so a plain proxy, an authenticated gateway or a signing
+// client does not mean reimplementing the download:
+//
+//	proxy := transcript.HTTPFetcher{
+//		Client:     &http.Client{Timeout: 20 * time.Second},
+//		RewriteURL: transcript.URLTemplateRewriter("https://proxy.example/fetch?url={urlenc}"),
+//		Header:     func(req *http.Request) { req.Header.Set("Authorization", "Bearer ...") },
+//	}
+//	tr.WriteFile("t.html", transcript.WithMedia(transcript.InlineMediaWith(proxy)))
+//
+// For anything more exotic, implement Fetcher, or wrap an http.RoundTripper in
+// Client: the transport sees the rewritten request, so it can add retries,
+// metrics or mutual TLS without touching this type.
 type HTTPFetcher struct {
-	// Client defaults to http.DefaultClient.
+	// Client defaults to http.DefaultClient. It carries the transport, timeouts
+	// and redirect policy, including the proxy settings Go already supports.
 	Client *http.Client
 	// UserAgent is sent with every request.
 	UserAgent string
+	// RewriteURL maps an original media URL to the URL actually requested, which
+	// is how downloads are routed through your own endpoint; see
+	// URLTemplateRewriter. The original URL still identifies the media in logs,
+	// errors and the fallback used when a download fails.
+	RewriteURL func(rawURL string) string
+	// Header decorates each request after it is built and before it is sent,
+	// which is where proxy credentials, referers or signatures go.
+	Header func(req *http.Request)
+}
+
+// URLTemplateRewriter builds an HTTPFetcher.RewriteURL for an endpoint that
+// takes the source URL as part of its address:
+//
+//	URLTemplateRewriter("https://proxy.example/fetch?url={urlenc}")
+//	URLTemplateRewriter("https://proxy.example/{urlenc}")
+//
+// {urlenc} inserts the source URL percent-encoded, which is what a query
+// parameter or a path segment needs; {url} inserts it verbatim. A template with
+// neither placeholder is returned unchanged.
+//
+// Spaces are encoded as %20 rather than +, because + only decodes back to a
+// space inside a query string; %20 is correct in a query and in a path alike.
+func URLTemplateRewriter(template string) func(rawURL string) string {
+	return func(rawURL string) string {
+		encoded := strings.ReplaceAll(url.QueryEscape(rawURL), "+", "%20")
+		out := strings.ReplaceAll(template, "{urlenc}", encoded)
+		return strings.ReplaceAll(out, "{url}", rawURL)
+	}
 }
 
 // Fetch implements Fetcher.
@@ -68,22 +123,33 @@ func (f HTTPFetcher) Fetch(ctx context.Context, ref MediaRef, maxBytes int64) ([
 	if ref.URL == "" {
 		return nil, "", errors.New("empty media URL")
 	}
+	target := ref.URL
+	if f.RewriteURL != nil {
+		if rewritten := f.RewriteURL(ref.URL); rewritten != "" {
+			target = rewritten
+		}
+	}
 	client := f.Client
 	if client == nil {
 		client = http.DefaultClient
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ref.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("fetch %s: %w", ref.URL, err)
 	}
 	if f.UserAgent != "" {
 		req.Header.Set("User-Agent", f.UserAgent)
 	} else {
 		req.Header.Set("User-Agent", "discord-transcript-go/"+Version)
 	}
+	if f.Header != nil {
+		f.Header(req)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, "", err
+		// Errors name the original URL: that is the thing the caller recognises,
+		// and any proxy target is derived from it.
+		return nil, "", fmt.Errorf("fetch %s: %w", ref.URL, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 

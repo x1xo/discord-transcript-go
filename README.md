@@ -207,6 +207,51 @@ Only group-start messages embed their avatar, so a repeated author costs its
 avatar bytes once. Authors with no usable avatar URL get a coloured initial
 instead of a network request.
 
+### Routing downloads through your own proxy
+
+The downloader is all hooks, so a proxy endpoint does not mean reimplementing the
+fetch:
+
+```go
+proxy := transcript.HTTPFetcher{
+	// Your endpoint receives the source URL. URLTemplateRewriter also supports the
+	// path form, "https://proxy.example/{urlenc}".
+	RewriteURL: transcript.URLTemplateRewriter("https://proxy.example/fetch?url={urlenc}"),
+	Header:     func(req *http.Request) { req.Header.Set("Authorization", "Bearer "+token) },
+	Client:     &http.Client{Timeout: 20 * time.Second},
+}
+
+tr.WriteFile("transcript.html", transcript.WithMedia(transcript.InlineMediaWith(proxy)))
+```
+
+The original URL still names the media in errors and warnings, and still serves as
+the fallback when the proxy fails.
+
+To keep transcripts small while making the media reachable, serve through the
+proxy rather than downloading it:
+
+```go
+rewrite := transcript.URLTemplateRewriter("https://proxy.example/fetch?url={urlenc}")
+store := transcript.MediaStoreFunc(func(_ context.Context, ref transcript.MediaRef) (string, error) {
+	return rewrite(ref.URL), nil
+})
+```
+
+That writes `<img src="https://proxy.example/fetch?url=…">` and downloads nothing.
+
+For anything more exotic — signed requests, a cache lookup, a command-line
+helper — implement `transcript.Fetcher`, use the one-method
+`transcript.FetchFunc`, or wrap an `http.RoundTripper` in `HTTPFetcher.Client` and
+let the transport rewrite URLs, retry or use mutual TLS.
+
+| Hook | Use it for |
+| --- | --- |
+| `HTTPFetcher.RewriteURL` | your proxy endpoint, a CDN shim, a mirror |
+| `HTTPFetcher.Header` | proxy credentials, referer, signatures |
+| `HTTPFetcher.Client` | timeouts, redirects, a custom `RoundTripper`, Go's own proxy settings |
+| `Fetcher` / `FetchFunc` | anything the three above cannot express |
+| `MediaStore` / `MediaStoreFunc` | choosing what the document references at all |
+
 ## What renders
 
 Discord markdown: `**bold**`, `*italic*`, `__underline__`, `~~strikethrough~~`,
