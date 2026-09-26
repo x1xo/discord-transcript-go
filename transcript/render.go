@@ -199,6 +199,11 @@ func (r *renderer) writeReply(reply Reply) {
 func (r *renderer) writeEmbed(e Embed) {
 	r.b.WriteString(`<discord-embed`)
 	r.attr("color", e.Color)
+	if e.Color != "" {
+		// The stylesheet reads the custom property; the attribute alone is inert,
+		// and the enhancement script skips rows already marked ready.
+		r.b.WriteString(` style="--dt-embed-color:` + escapeText(e.Color) + `"`)
+	}
 	r.flag("data-dt-ready")
 	r.b.WriteString(">")
 
@@ -407,7 +412,7 @@ func (r *renderer) writeNodes(nodes []Node) {
 func (r *renderer) writeNode(n Node) {
 	switch n.Kind {
 	case NodeText:
-		r.b.WriteString(escapeText(n.Text))
+		r.writeText(n.Text)
 	case NodeLineBreak:
 		r.b.WriteString("<br>")
 	case NodeBold:
@@ -491,6 +496,24 @@ func (r *renderer) writeNode(n Node) {
 			r.attr("format", string(n.Format))
 		}
 		r.b.WriteString(">" + escapeText(r.inlineStamp(n.Timestamp, n.Format)) + `</discord-time>`)
+	}
+}
+
+// writeText emits literal text, converting newlines into hard breaks. Producers
+// that hand over a text node with newlines rather than parsing it into nodes
+// still get the line breaks a reader expects; code blocks keep theirs verbatim
+// because they travel as their own node kind.
+func (r *renderer) writeText(text string) {
+	if !strings.ContainsAny(text, "\r\n") {
+		r.b.WriteString(escapeText(text))
+		return
+	}
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	for i, line := range lines {
+		if i > 0 {
+			r.b.WriteString("<br>")
+		}
+		r.b.WriteString(escapeText(strings.TrimSuffix(line, "\r")))
 	}
 }
 

@@ -107,7 +107,7 @@ func exampleTranscript(t *testing.T) *Transcript {
 					URL:         "https://example.com/embed",
 					Title:       "Embeds keep their content as real markup",
 					Provider:    "Example",
-					Description: parse("The description keeps **markdown** and a <@100000000000000002> mention."),
+					Description: parse("The description keeps **markdown** and a <@100000000000000002> mention.\nThis second line proves newlines survive."),
 					Author:      &EmbedAuthor{Name: "miona", URL: "https://example.com/miona", Icon: &Media{URL: examplePNG, Kind: MediaImage}},
 					Fields: []EmbedField{
 						{Name: "Stylesheet", Value: parse("one file"), Inline: true},

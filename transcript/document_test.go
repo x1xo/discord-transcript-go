@@ -182,7 +182,7 @@ func TestDocumentStructure(t *testing.T) {
 		`<discord-reaction data-dt-ready><span class="dt-reaction-emoji">🎉</span><span class="dt-reaction-count">3</span>`,
 		`<discord-reaction data-dt-ready reacted><img class="dt-reaction-emoji" src="https://cdn.discordapp.com/emojis/999999999999999999.png" alt=":party:"`,
 		`<discord-reaction data-dt-ready><span class="dt-reaction-emoji">🍰</span>`,
-		`<discord-embed color="#5865f2" data-dt-ready>`,
+		`<discord-embed color="#5865f2" style="--dt-embed-color:#5865f2" data-dt-ready>`,
 		`<a class="dt-embed-title" href="https://example.com/embed"`,
 		`<discord-embed-description>`,
 		`<discord-embed-field field-title="Inline one" inline>`,
@@ -478,6 +478,26 @@ func TestShortenTagsCoversEveryName(t *testing.T) {
 		if got != want {
 			t.Errorf("shortenTags(%s) = %q, want %q", long, got, want)
 		}
+	}
+}
+
+func TestTextNodesKeepTheirLineBreaks(t *testing.T) {
+	// A producer that hands over a text node with newlines, instead of parsing the
+	// content into nodes, must still get the line breaks a reader expects: without
+	// this the lines collapse when nothing styles them.
+	tr := &Transcript{
+		Channel: Channel{Name: "general", Type: ChannelText},
+		Messages: []Message{{
+			Author: Author{Key: "1", Name: "piton"},
+			Embeds: []Embed{{Description: []Node{Text("first line\nsecond line\r\nthird")}}},
+		}},
+	}
+	doc, err := tr.HTML(WithMedia(URLMedia()))
+	if err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	if !strings.Contains(string(doc), "first line<br>second line<br>third") {
+		t.Errorf("newlines in a text node should become hard breaks:\n%s", doc)
 	}
 }
 

@@ -183,6 +183,27 @@ const result = await send('Runtime.evaluate', {
 		const channelHeader = getComputedStyle(document.querySelector(T('messages','dms')), '::before').content;
 		check('channel header rendered', channelHeader.includes('general'), true);
 
+		// Embeds: the accent colour must reach the border, the footer must sit below
+		// the thumbnail rather than beside it, and a description must keep its line
+		// breaks. Each of these was broken once.
+		const embed = document.querySelector(T('embed', 'de'));
+		if (embed) {
+			check('embed accent colour applied', getComputedStyle(embed).borderLeftColor, 'rgb(88, 101, 242)');
+			check('embed accent is 4px', getComputedStyle(embed).borderLeftWidth, '4px');
+			const thumbnail = embed.querySelector('.dt-embed-thumbnail, [slot="thumbnail"]');
+			const footer = embed.querySelector(T('embed-footer', 'defo'));
+			if (thumbnail && footer) {
+				const thumbBox = thumbnail.getBoundingClientRect();
+				const footerBox = footer.getBoundingClientRect();
+				check('embed footer clears the thumbnail', footerBox.top >= thumbBox.bottom - 1, true);
+				check('embed footer spans the row', footerBox.width > thumbBox.width * 1.5, true);
+			}
+			const description = embed.querySelector(T('embed-description', 'ded'));
+			if (description) {
+				check('description keeps its line breaks', description.innerHTML.includes('<br>'), true);
+			}
+		}
+
 		// Timestamps: message headers show the short date and time for anything
 		// older than yesterday ("3/15/24, 2:28 PM"). The compact form
 		// ("11:49PM") and the "Yesterday at …" prefix only appear for recent

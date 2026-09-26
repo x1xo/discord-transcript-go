@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Third-party markup fixture</title>
+		<!--
+			This fixture is NOT produced by the Go renderer. It mimics what a
+			skyra-style parser emits, so the stylesheet can be checked against markup
+			it did not generate: a bare multi-line description, media marked with
+			slot attributes (which are inert in light DOM), a footer slot, and
+			Discord's decimal colour attribute.
+
+			The enhancement script is deliberately absent — this is the
+			stylesheet-only path, which is the harder case. The same markup with
+			third-party-markup-enhanced.html adds the script, which normalises the
+			decimal colour and wraps the bare description.
+
+			The second embed keeps its description short, the case that used to
+			leave the footer sitting beside the thumbnail.
+		-->
+		<link rel="stylesheet" href="../../dist/discord-transcript.min.css" />
+		<style>
+			body {
+				margin: 0;
+				padding: 16px;
+				background: #1e1f22;
+			}
+		</style>
+	</head>
+	<body>
+		<discord-messages channel-name="ticket-332" channel-type="text">
+			<discord-message author="miona beta" bot verified timestamp="2026-09-26T10:56:00Z">
+				<discord-reply author="piton" mentions>@piton</discord-reply>
+				<discord-embed color="16766720">
+					niga niga niga niga
+					**{category_emoji} Test** Thank you for contacting support.
+					Please describe your issue and wait for a response.
+					<img
+						slot="thumbnail"
+						alt=""
+						src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23efc9f5'/%3E%3Ccircle cx='32' cy='30' r='22' fill='%23f7f2f8'/%3E%3Ccircle cx='24' cy='28' r='4' fill='%23302a33'/%3E%3Ccircle cx='40' cy='28' r='4' fill='%23302a33'/%3E%3Cpath d='M26 40q6 4 12 0' stroke='%23302a33' stroke-width='2' fill='none'/%3E%3C/svg%3E"
+					/>
+					<discord-embed-footer>
+						<span class="dt-embed-footer-icon"
+							><img
+								alt=""
+								src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='10' cy='10' r='9' fill='%23ed4245'/%3E%3C/svg%3E"
+						/></span>
+						miona • tickets • Today at 12:57 PM
+					</discord-embed-footer>
+				</discord-embed>
+			</discord-message>
+			<discord-message author="332" timestamp="2026-09-26T12:57:00Z">
+				<discord-embed color="#5865f2">
+					A short description that wraps beside the thumbnail and clears it
+					before the fields.
+					<img
+						slot="thumbnail"
+						alt=""
+						src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%235865f2'/%3E%3C/svg%3E"
+					/>
+					<discord-embed-fields>
+						<discord-embed-field field-title="Status" inline>Open</discord-embed-field>
+						<discord-embed-field field-title="Priority" inline>High</discord-embed-field>
+					</discord-embed-fields>
+					<img
+						slot="image"
+						alt=""
+						src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 40'%3E%3Crect width='240' height='40' fill='%234e5058'/%3E%3C/svg%3E"
+					/>
+					<span slot="footer">footer from a slot attribute</span>
+				</discord-embed>
+			</discord-message>
+		</discord-messages>
+	</body>
+</html>

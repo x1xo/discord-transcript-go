@@ -141,6 +141,18 @@ make example      # or: go test ./transcript -run TestGenerateExamples -update
 They use inline media, so they are deterministic and need no network; the
 download path, proxies included, is covered by `media_test.go`.
 
+`examples/third-party-markup.html` and `examples/third-party-markup-enhanced.html`
+are hand-written: the same transcript twice, in the shape a skyra-style parser
+emits rather than the shape this renderer emits — a bare multi-line description,
+media and the footer marked with `slot` attributes, and Discord's decimal
+`color` attribute. The first loads the stylesheet only, the second adds the
+script. They exist so embed layout is exercised against markup the renderer did
+not generate; open either in a browser, or point the check at it:
+
+```bash
+node scripts/verify-browser.mjs examples/transcript.html --css ../dist/discord-transcript.min.css
+```
+
 ## Media: why base64, and when not to
 
 Discord serves attachments from **signed URLs that expire within hours**, so a

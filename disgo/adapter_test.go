@@ -206,7 +206,7 @@ func TestEmbedsAttachmentsAndReactions(t *testing.T) {
 	html := render(t, New(), msg)
 
 	for _, want := range []string{
-		`<discord-embed color="#5865f2" data-dt-ready>`,
+		`<discord-embed color="#5865f2" style="--dt-embed-color:#5865f2" data-dt-ready>`,
 		`<span class="dt-embed-author">`,
 		`<a class="dt-embed-title" href="https://example.com"`,
 		`<discord-embed-description>Some <discord-bold>description</discord-bold></discord-embed-description>`,
