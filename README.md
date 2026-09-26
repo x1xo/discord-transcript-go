@@ -127,63 +127,19 @@ An explicit `WithCSS` always wins over the short default, so a self-hosted or
 different-version stylesheet still works. This needs `discord-transcript-ui`
 1.1.0 or newer, which is where the short stylesheet is published.
 
-## Command line
+## Examples
+
+`examples/` holds three committed transcripts — the default, one with the
+optional script, and one with the compact tag names — which
+`scripts/verify-browser.mjs` renders in a real browser. Regenerate them after a
+renderer change:
 
 ```bash
-# Default: one minimal file, stylesheet from the CDN, media inlined
-discord-transcript -in messages.json -out transcript.html
-
-# Your own CDN, or a different version
-discord-transcript -in messages.json -css https://cdn.example.com/d.min.css \
-  -css-integrity sha384-… -out transcript.html
-
-# Add the optional enhancement script
-discord-transcript -in messages.json -script -out interactive.html
-
-# Keep the original (expiring) CDN URLs, or write media next to the HTML
-discord-transcript -in messages.json -media url -out transcript.html
-discord-transcript -in messages.json -media dir -media-dir assets -out out/
+make example      # or: go test ./transcript -run TestGenerateExamples -update
 ```
 
-Two input shapes are accepted. A bare array is a list of messages:
-
-```json
-[{ "id": "…", "timestamp": "2024-03-15T14:28:00Z", "author": { "id": "…", "username": "piton" }, "content": "hello" }]
-```
-
-A richer object adds channel metadata and author overrides, which is what an
-offline export needs when no cache is available:
-
-```json
-{
-	"channel": { "name": "general", "type": "text", "guild": "Test Server" },
-	"profiles": {
-		"100000000000000001": { "author": "piton", "avatar": "https://…", "roleColor": "#57f287" },
-		"100000000000000002": { "author": "miona", "bot": true, "verified": true }
-	},
-	"messages": [ … ]
-}
-```
-
-Other flags: `-theme dark|light`, `-media inline|dir|url`, `-max-media-bytes`,
-`-profiles overrides.json`, `-self <user-id>`, `-timezone`, `-locale`,
-`-no-replies`, `-header`, `-meta`, `-quiet`. Run `discord-transcript -h` for all of them.
-
-## Headers
-
-Three kinds, all working:
-
-1. **Markdown headings** — `#`, `##` and `###` become `<discord-header level="1|2|3">`
-   and are styled as Discord's heading sizes. This is on by default; the example
-   transcript contains both an `h1` and an `h2`.
-2. **Channel header** — `<discord-messages channel-name="general" channel-type="text">`
-   renders a header with the `#`/channel-type prefix straight from the stylesheet,
-   so it needs no JavaScript. It comes from the `channel` object in the JSON input
-   or from `-channel`/`-channel-type`.
-3. **Page header** — opt-in with `-header` (or `transcript.WithPageHeader()`), which
-   adds `<h1 class="dt-page__title">` above the conversation; pair it with `-meta`
-   for the message count and date range. It is off by default because the channel
-   header above already shows the name, and minimal output is the point.
+They use inline media, so they are deterministic and need no network; the
+download path, proxies included, is covered by `media_test.go`.
 
 ## Media: why base64, and when not to
 
@@ -305,7 +261,6 @@ transcript/            no Discord dependency
   media.go             MediaStore: inline (base64) / dir / url, plus custom Fetcher
   identity.go          Resolver interfaces + map-backed implementations
 disgo/                 the adapter: []discord.Message -> IR, cache-backed resolver
-cmd/discord-transcript JSON in, minimal HTML out
 ```
 
 ## Where this module lives

@@ -14,25 +14,18 @@ vet:
 fmt:
 	gofmt -w .
 
-# Regenerate the example transcripts from the test fixture.
-example: examples/transcript.html examples/transcript-interactive.html examples/transcript-short.html
+# Regenerate the committed examples (and the golden file) after a renderer change.
+example:
+	go test ./transcript -run TestGenerateExamples -update
 
-examples/transcript.html: testdata/export.json
-	go run ./cmd/discord-transcript -in testdata/export.json -out examples/transcript.html
-
-examples/transcript-interactive.html: testdata/export.json
-	go run ./cmd/discord-transcript -in testdata/export.json -out examples/transcript-interactive.html -script
-
-examples/transcript-short.html: testdata/export.json
-	go run ./cmd/discord-transcript -in testdata/export.json -out examples/transcript-short.html -short-tags
-
-# Full check: tests plus a real-browser render of both examples.
-# Needs a Chrome or Chromium binary on PATH (or CHROME=/path/to/chrome).
+# Full check: tests plus a real-browser render of the examples.
+# Needs Chrome (CHROME=/path/to/chrome overrides the lookup). The --css fallback
+# checks against the local stylesheet when the pinned release is not on the CDN.
 verify: test example
 	node scripts/verify-browser.mjs examples/transcript.html --css ../dist/discord-transcript.min.css
 	node scripts/verify-browser.mjs examples/transcript-interactive.html --css ../dist/discord-transcript.min.css
 	node scripts/verify-browser.mjs examples/transcript-short.html --css ../dist/discord-transcript.short.min.css
 
 clean:
-	rm -f examples/transcript.html examples/transcript-interactive.html examples/transcript-short.html
+	rm -f examples/*.html
 	go clean -testcache
