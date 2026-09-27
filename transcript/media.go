@@ -15,12 +15,35 @@ import (
 	"sync"
 )
 
+// MediaUse is what a piece of media is used for. It decides whether downloading
+// it is worth the bytes: an avatar is small, decorative and long-lived on
+// Discord's CDN, while an attachment is the content of a message and its link
+// expires within hours.
+type MediaUse string
+
+// Supported media uses. The renderer sets these; a producer only reads them.
+const (
+	// UseAvatar is a user avatar, or an embed author or footer icon.
+	UseAvatar MediaUse = "avatar"
+	// UseEmoji is a custom emoji, in a message or on a reaction.
+	UseEmoji MediaUse = "emoji"
+	// UseThumbnail is an embed's thumbnail.
+	UseThumbnail MediaUse = "thumbnail"
+	// UseEmbedImage is a content image inside an embed.
+	UseEmbedImage MediaUse = "embed-image"
+	// UseAttachment is a file posted with a message, images included.
+	UseAttachment MediaUse = "attachment"
+)
+
 // MediaRef describes one piece of media to be resolved.
 type MediaRef struct {
 	// URL is where the media currently lives.
 	URL string
 	// Kind is what it is; the store may use it to choose an extension.
 	Kind MediaKind
+	// Use is what it is there for, which is what decides whether it is worth
+	// downloading at all. See MediaUse.
+	Use MediaUse
 	// Filename is a suggested name (attachments carry one).
 	Filename string
 	// ContentType is a hint, when the producer already knows it.

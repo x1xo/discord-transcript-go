@@ -11,67 +11,78 @@ import (
 //
 // Lookup order is deliberate: explicit overrides first (so offline exports can
 // correct anything), then the data carried by the message itself (which works
-// with no cache and no network), then disgo's caches.
+// with no cache and no network), then the same data seen anywhere else in the
+// export, and only then disgo's caches. The export wins over a live cache, so a
+// transcript reads the way it did when it was exported.
 type messageResolvers struct {
-	base     *Adapter
-	guildID  snowflake.ID
-	users    map[snowflake.ID]discord.User
-	members  map[snowflake.ID]discord.Member
-	channels map[snowflake.ID]string
-	roles    map[snowflake.ID]discord.Role
+	base    *Adapter
+	guildID snowflake.ID
+	local   *identitySet
+	shared  *transcriptIndex
+	roles   map[snowflake.ID]discord.Role
 }
 
 // resolversFor collects everything the message already knows about identities,
-// including the message it replies to.
-func (a *Adapter) resolversFor(m discord.Message) *messageResolvers {
+// including the message it replies to, and pairs it with the export-wide index.
+func (a *Adapter) resolversFor(m discord.Message, shared *transcriptIndex) *messageResolvers {
 	r := &messageResolvers{
-		base:     a,
-		users:    make(map[snowflake.ID]discord.User, len(m.Mentions)+2),
-		members:  make(map[snowflake.ID]discord.Member, 2),
-		channels: make(map[snowflake.ID]string, len(m.MentionChannels)),
-		roles:    make(map[snowflake.ID]discord.Role),
+		base:   a,
+		shared: shared,
+		local:  newIdentitySet(2),
+		roles:  make(map[snowflake.ID]discord.Role),
 	}
 	if m.GuildID != nil {
 		r.guildID = *m.GuildID
 	}
-	r.absorb(m)
+	if m.Member != nil && r.guildID == 0 {
+		r.guildID = m.Member.GuildID
+	}
+	if r.guildID == 0 && shared != nil {
+		r.guildID = shared.guildID
+	}
+	r.local.absorb(m)
 	if m.ReferencedMessage != nil {
-		r.absorb(*m.ReferencedMessage)
+		r.local.absorb(*m.ReferencedMessage)
 	}
 	return r
 }
 
-func (r *messageResolvers) absorb(m discord.Message) {
-	if m.Author.ID != 0 {
-		r.users[m.Author.ID] = m.Author
-	}
-	if m.Member != nil {
-		r.members[m.Author.ID] = *m.Member
-		if r.guildID == 0 && m.Member.GuildID != 0 {
-			r.guildID = m.Member.GuildID
-		}
-	}
-	for _, u := range m.Mentions {
-		r.users[u.ID] = u
-	}
-	for _, c := range m.MentionChannels {
-		if c.Name != "" {
-			r.channels[c.ID] = c.Name
-		}
-	}
-}
-
-// memberFor finds a guild member locally or in disgo's cache.
+// memberFor finds a guild member for an author: the message's own data, then the
+// export, then disgo's cache.
 func (r *messageResolvers) memberFor(id snowflake.ID) (discord.Member, bool) {
-	if member, ok := r.members[id]; ok {
+	if member, ok := r.local.members[id]; ok {
 		return member, true
 	}
+	if r.shared != nil {
+		if member, ok := r.shared.set.members[id]; ok {
+			return member, true
+		}
+	}
+	return r.cacheMember(id)
+}
+
+// cacheMember finds a guild member in disgo's cache, the last resort.
+func (r *messageResolvers) cacheMember(id snowflake.ID) (discord.Member, bool) {
 	if r.base.opts.Caches != nil && r.guildID != 0 {
 		if member, ok := r.base.opts.Caches.Member(r.guildID, id); ok {
 			return member, true
 		}
 	}
 	return discord.Member{}, false
+}
+
+// authorFromMember is the identity a mentioned member renders with: nickname,
+// guild avatar and the colour of their highest coloured role.
+func (r *messageResolvers) authorFromMember(member discord.Member) transcript.Author {
+	author := authorFromUser(member.User)
+	author.Name = member.EffectiveName()
+	if avatar := member.EffectiveAvatarURL(); avatar != "" {
+		author.AvatarURL = avatar
+	}
+	if color := r.roleColorFor(member); color != "" {
+		author.RoleColor = color
+	}
+	return author
 }
 
 // User implements transcript.UserResolver.
@@ -83,19 +94,22 @@ func (r *messageResolvers) User(id string) (transcript.Author, bool) {
 	if override, ok := r.overrideUser(id); ok {
 		return override, true
 	}
-	if member, ok := r.memberFor(snowflakeID); ok {
-		author := authorFromUser(member.User)
-		author.Name = member.EffectiveName()
-		if avatar := member.EffectiveAvatarURL(); avatar != "" {
-			author.AvatarURL = avatar
-		}
-		if color := r.roleColorFor(member); color != "" {
-			author.RoleColor = color
-		}
-		return author, true
+	if member, ok := r.local.members[snowflakeID]; ok {
+		return r.authorFromMember(member), true
 	}
-	if user, ok := r.users[snowflakeID]; ok {
+	if user, ok := r.local.users[snowflakeID]; ok {
 		return authorFromUser(user), true
+	}
+	if r.shared != nil {
+		if user, member, ok := r.shared.user(snowflakeID); ok {
+			if member.User.ID != 0 {
+				return r.authorFromMember(member), true
+			}
+			return authorFromUser(user), true
+		}
+	}
+	if member, ok := r.cacheMember(snowflakeID); ok {
+		return r.authorFromMember(member), true
 	}
 	return transcript.Author{}, false
 }
@@ -111,8 +125,13 @@ func (r *messageResolvers) Channel(id string) (string, bool) {
 			return name, true
 		}
 	}
-	if name, ok := r.channels[snowflakeID]; ok {
+	if name, ok := r.local.channels[snowflakeID]; ok {
 		return name, true
+	}
+	if r.shared != nil {
+		if name, ok := r.shared.set.channels[snowflakeID]; ok {
+			return name, true
+		}
 	}
 	if r.base.opts.Caches != nil {
 		if ch, ok := r.base.opts.Caches.Channel(snowflakeID); ok {

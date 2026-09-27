@@ -307,7 +307,7 @@ func (r *renderer) writeAttachments(list []Attachment) {
 			r.writeVideo(Media{URL: a.URL, Alt: a.Alt, Kind: MediaVideo})
 			r.b.WriteString(`</discord-video-attachment>`)
 		case MediaAudio:
-			src := r.resolve(MediaRef{URL: a.URL, Kind: MediaAudio, Filename: a.Name})
+			src := r.resolve(MediaRef{URL: a.URL, Kind: MediaAudio, Use: UseAttachment, Filename: a.Name})
 			if src == "" {
 				continue
 			}
@@ -372,7 +372,10 @@ func (r *renderer) writeReactions(list []Reaction) {
 		case isRemote(emoji) || strings.HasPrefix(emoji, "data:"):
 			src := emoji
 			if isRemote(emoji) {
-				src = r.resolve(MediaRef{URL: emoji, Kind: MediaEmoji, Filename: reaction.Name, TargetEdge: r.targetEdge("emoji")})
+				src = r.resolve(MediaRef{
+					URL: emoji, Kind: MediaEmoji, Use: UseEmoji,
+					Filename: reaction.Name, TargetEdge: r.targetEdge("emoji"),
+				})
 			}
 			alt := reaction.Name
 			if alt == "" {
@@ -488,7 +491,10 @@ func (r *renderer) writeNode(n Node) {
 	case NodeEmoji:
 		// The image is emitted directly, so the emoji renders with the
 		// stylesheet alone and the script has nothing to build.
-		src := r.resolve(MediaRef{URL: n.EmojiURL, Kind: MediaEmoji, Filename: n.Text, TargetEdge: r.targetEdge("emoji")})
+		src := r.resolve(MediaRef{
+			URL: n.EmojiURL, Kind: MediaEmoji, Use: UseEmoji,
+			Filename: n.Text, TargetEdge: r.targetEdge("emoji"),
+		})
 		r.b.WriteString(`<discord-custom-emoji`)
 		r.attr("name", n.Text)
 		r.b.WriteString(">")
@@ -548,7 +554,7 @@ func (r *renderer) writeMention(n Node) {
 // ------------------------------------------------------------------- media
 
 func (r *renderer) writeMediaImg(m Media, class string) {
-	src := r.resolve(MediaRef{URL: m.URL, Kind: m.Kind, Alt: m.Alt})
+	src := r.resolve(MediaRef{URL: m.URL, Kind: m.Kind, Alt: m.Alt, Use: UseEmbedImage})
 	if src == "" {
 		return
 	}
@@ -572,6 +578,7 @@ func (r *renderer) writeMediaImg(m Media, class string) {
 // fetched once by the browser.
 func (r *renderer) writeIcon(ref MediaRef, role string) {
 	ref.TargetEdge = r.targetEdge(role)
+	ref.Use = useForRole(role)
 	src := r.resolve(ref)
 	if src == "" {
 		return
@@ -581,6 +588,16 @@ func (r *renderer) writeIcon(ref MediaRef, role string) {
 		r.attr("data-dt-media", role)
 	}
 	r.b.WriteString(">")
+}
+
+// useForRole maps a decorative role onto the media use it represents. An embed
+// author or footer icon is a user avatar wearing a different hat, and the CDN
+// treats it the same way.
+func useForRole(role string) MediaUse {
+	if role == "thumbnail" {
+		return UseThumbnail
+	}
+	return UseAvatar
 }
 
 // targetEdge is the longest edge an image with this role is worth keeping, or 0
@@ -596,7 +613,7 @@ func (r *renderer) targetEdge(role string) int {
 }
 
 func (r *renderer) writeImage(a Attachment) {
-	src := r.resolve(MediaRef{URL: a.URL, Kind: MediaImage, Filename: a.Name})
+	src := r.resolve(MediaRef{URL: a.URL, Kind: MediaImage, Use: UseAttachment, Filename: a.Name})
 	if src == "" {
 		return
 	}
@@ -612,7 +629,7 @@ func (r *renderer) writeImage(a Attachment) {
 }
 
 func (r *renderer) writeVideo(m Media) {
-	src := r.resolve(MediaRef{URL: m.URL, Kind: MediaVideo, Filename: m.Alt})
+	src := r.resolve(MediaRef{URL: m.URL, Kind: MediaVideo, Use: UseAttachment, Filename: m.Alt})
 	if src == "" {
 		return
 	}
@@ -630,6 +647,10 @@ func (r *renderer) resolve(ref MediaRef) string {
 	// copy instead of the 1024px original, and a store that ignores the query is
 	// corrected below.
 	ref.URL = discordSizedURL(ref.URL, ref.TargetEdge)
+	if r.o.LinkedMedia[ref.Use] {
+		// Nothing is downloaded: the document points at wherever it already lives.
+		return ref.URL
+	}
 	if r.o.Media == nil {
 		return ref.URL
 	}

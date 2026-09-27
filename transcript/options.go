@@ -42,6 +42,11 @@ type Options struct {
 	// block, and points every use at it. Avatars repeat once per message, so
 	// this is usually the largest single saving after right-sizing.
 	MediaPool bool
+	// LinkedMedia lists the uses that keep the URL the producer supplied instead
+	// of being downloaded. WithCDNMedia turns on every use but UseAttachment,
+	// which is the shape a transcript served over HTTP wants: the CDN serves the
+	// small decorative images and only a message's own attachments are inlined.
+	LinkedMedia map[MediaUse]bool
 	// MaxMediaBytes caps a single download. Zero means DefaultMaxMediaBytes.
 	MaxMediaBytes int64
 	// Locale and TimeZone format timestamps. The generated text is absolute and
@@ -204,6 +209,34 @@ func WithoutMediaPool() Option { return func(o *Options) { o.MediaPool = false }
 // WithoutMediaDownscale keeps the original bytes of avatars, icons and
 // thumbnails instead of right-sizing them to the size they are drawn at.
 func WithoutMediaDownscale() Option { return func(o *Options) { o.MediaDownscale = false } }
+
+// WithCDNMedia keeps avatars, emoji, thumbnails and embed images pointing at the
+// URL the producer supplied, so only a message's attachments are downloaded and
+// inlined.
+//
+// For Discord those links are hash-based and long-lived, so a transcript served
+// over HTTP stays a fraction of the size and downloads nothing by itself. The
+// trade-off is the one the inline default exists for: the document needs the
+// network to render, and a link that *is* signed — an embed thumbnail that points
+// at a cdn.discordapp.com/attachments URL with an expiry — is a broken image once
+// it lapses. Use WithLinkedMedia to choose per use.
+func WithCDNMedia() Option {
+	return WithLinkedMedia(UseAvatar, UseEmoji, UseThumbnail, UseEmbedImage)
+}
+
+// WithLinkedMedia links the listed uses and inlines the rest. Attachment links
+// expire within hours, so a transcript that links them will rot.
+func WithLinkedMedia(uses ...MediaUse) Option {
+	return func(o *Options) {
+		o.LinkedMedia = make(map[MediaUse]bool, len(uses))
+		for _, use := range uses {
+			o.LinkedMedia[use] = true
+		}
+	}
+}
+
+// WithoutLinkedMedia goes back to downloading and inlining every use.
+func WithoutLinkedMedia() Option { return func(o *Options) { o.LinkedMedia = nil } }
 
 // WithMaxMediaBytes caps a single media download.
 func WithMaxMediaBytes(n int64) Option { return func(o *Options) { o.MaxMediaBytes = n } }

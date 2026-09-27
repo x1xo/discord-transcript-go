@@ -213,6 +213,33 @@ tr.WriteFile("ticket.html", transcript.WithoutMediaPool())        // an <img> pe
 tr.WriteFile("ticket.html", transcript.WithoutMediaDownscale())   // original bytes
 ```
 
+### Linking instead of inlining
+
+If the transcript is served over HTTP rather than archived as a single file, the
+small images do not need to be in the file at all. `WithCDNMedia()` keeps
+avatars, emoji, thumbnails and embed images pointing at the URL they came from —
+for Discord those are hash-based and only change when the image does — and
+downloads only a message's attachments, whose links expire within hours:
+
+```go
+tr.WriteFile("ticket.html", transcript.WithCDNMedia()) // attachments only
+tr.WriteFile("ticket.html", transcript.WithLinkedMedia(transcript.UseAvatar, transcript.UseThumbnail))
+tr.WriteFile("ticket.html", transcript.WithoutLinkedMedia()) // the default again
+```
+
+The avatar URLs still carry the size the renderer draws at (`?size=64`), so the
+browser fetches small images, and nothing is downloaded while exporting. The
+trade-off is the reason the inline default exists: the document now needs the
+network, and an embed thumbnail that happens to point at a *signed*
+`cdn.discordapp.com/attachments` link — rather than an `/external/` proxy link or
+the producer's own host — will be a broken image once that link lapses.
+
+| Call | Avatars, emoji | Thumbnails, embed images | Attachments |
+| --- | --- | --- | --- |
+| *(default)* | inlined | inlined | inlined |
+| `WithCDNMedia()` | linked | linked | inlined |
+| `WithLinkedMedia(...)` | your choice | your choice | your choice |
+
 Measured on a four-message ticket with two avatars, an embed, an attachment and a
 repeated icon (synthetic 128px avatars, the default store):
 
@@ -313,9 +340,33 @@ renderer understand threads; the adapter does not map them yet.
 
 Nicknames and role colours come from, in order:
 
-1. explicit overrides (`disgo.WithUsers`, `disgo.WithRoles`, `-profiles`);
+1. explicit overrides (`disgo.WithUsers`, `disgo.WithRoles`, `disgo.WithChannels`);
 2. the data carried by the message itself (`member`, `mentions`, `mention_channels`);
-3. disgo's caches (`disgo.WithCaches(client.Caches)`).
+3. the same data seen anywhere else in the export — `Transcript` reads every
+   message once before converting, so a mention of someone who only posted
+   earlier still resolves;
+4. disgo's caches (`disgo.WithCaches(client.Caches)`).
+
+The export wins over a live cache, so a transcript reads the way it did when it
+was exported.
+
+Step 3 is what makes mentions work in practice, because the API does not help:
+mentions inside an **embed** never reach the message's `mentions` array, and a
+channel is only named by the messages that happen to mention it. A mention of the
+channel the transcript itself covers resolves from `Channel.Name`. Anything still
+unknown keeps its raw ID rather than vanishing, because a transcript is a record
+of what was said.
+
+**Role mentions are the exception.** Discord sends role IDs (`mention_roles`)
+and never their names, so `<@&123>` can only resolve from an override or a cache.
+`disgo.RolesFrom` turns a guild's roles into the map `WithRoles` takes:
+
+```go
+adapter := disgo.New(
+	disgo.WithUsers(userMap),
+	disgo.WithRoles(disgo.RolesFrom(guild.Roles)), // role names and colours
+)
+```
 
 **Gotcha:** disgo's caches are no-ops unless they were created with the right flags:
 

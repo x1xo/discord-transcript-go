@@ -4,6 +4,35 @@ Versions here belong to the Go module and move on their own. The markup contract
 the renderer emits is `transcript.ContractVersion`, generated from the
 `discord-transcript-ui` build, and it is listed per release below.
 
+## 1.4.0
+
+Contract: `discord-transcript-ui` 1.1.2 (unchanged).
+
+* **`transcript.WithCDNMedia()` links instead of inlining.** Avatars, emoji,
+  thumbnails and embed images keep the URL they came from, and only a message's
+  attachments are downloaded and written as base64. For Discord those links are
+  hash-based and long-lived, so a transcript served over HTTP stays small and
+  downloads nothing while exporting. `WithLinkedMedia(uses...)` chooses per use,
+  `WithoutLinkedMedia()` goes back to inlining everything, and `MediaRef.Use`
+  tells a custom store which is which. The trade-off is the one the inline
+  default exists for: the document needs the network, and a thumbnail that points
+  at a *signed* attachment link rots when that link lapses.
+* **Mentions resolve against the whole export.** `Transcript` reads every message
+  once to build an identity index — authors, members, `mentions`,
+  `mention_channels` — and parses each message with it, so a mention of someone
+  who only posted earlier still renders a name, a channel named by a different
+  message resolves, and **mentions inside embeds** work at all: Discord never puts
+  those in the message's `mentions` array. A mention of the channel the transcript
+  covers resolves from `Channel.Name`.
+* `disgo.RolesFrom` converts a guild's roles into the `WithRoles` map, which is
+  the only way a `<@&role>` mention can render a name — Discord sends role IDs and
+  never their names. Role colours for author names come from the same map.
+* A message that mentions the viewer inside an **embed** is now highlighted, not
+  only one that mentions them in its content.
+* Identity lookup order is documented and now puts the export ahead of a live
+  cache, so a transcript reads the way it did when it was exported: overrides,
+  the message itself, the export, caches. Unresolved mentions keep their raw ID.
+
 ## 1.3.0
 
 Contract: `discord-transcript-ui` 1.1.2 (unchanged).

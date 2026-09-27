@@ -17,8 +17,10 @@ import (
 	"github.com/x1xo/discord-transcript-go/transcript"
 )
 
-// Options configures an Adapter. The zero value is usable: messages then render
-// with whatever identity they carry, and mentions keep their raw IDs.
+// Options configures an Adapter. The zero value is usable: messages render with
+// whatever identity they carry, and Transcript resolves mentions against the
+// whole export, so a mention only keeps its raw ID when nothing in the export
+// knows the name.
 type Options struct {
 	// Caches supplies nicknames, guild avatars and role colours. Usually
 	// bot.Client.Caches. Optional, and only useful for the entity kinds the bot
@@ -87,8 +89,12 @@ func (a *Adapter) Transcript(channel transcript.Channel, messages []discord.Mess
 		Channel:  channel,
 		Messages: make([]transcript.Message, 0, len(messages)),
 	}
+	// One pass to learn every identity the export carries, then a pass per
+	// message, so a mention resolves even when only some other message knows the
+	// name. See transcriptIndex.
+	idx := newTranscriptIndex(channel, messages)
 	for _, m := range messages {
-		tr.Messages = append(tr.Messages, a.Message(m))
+		tr.Messages = append(tr.Messages, a.message(m, idx))
 	}
 	return tr
 }
@@ -113,10 +119,18 @@ func (a *Adapter) Channel(ch discord.Channel) transcript.Channel {
 	return out
 }
 
-// Message converts one disgo message. It never fails: anything it cannot
-// resolve degrades to the raw value rather than losing the message.
+// Message converts one disgo message. It never fails: anything it cannot resolve
+// degrades to the raw value rather than losing the message.
+//
+// Identities come from this message alone. Transcript is the entry point that
+// resolves mentions against the whole export, which is usually what a caller
+// wants; this one exists for mapping a message in isolation.
 func (a *Adapter) Message(m discord.Message) transcript.Message {
-	res := a.resolversFor(m)
+	return a.message(m, nil)
+}
+
+func (a *Adapter) message(m discord.Message, shared *transcriptIndex) transcript.Message {
+	res := a.resolversFor(m, shared)
 
 	out := transcript.Message{
 		Timestamp: m.CreatedAt,
@@ -350,9 +364,33 @@ func (a *Adapter) mentionsSelf(m discord.Message) bool {
 		}
 	}
 	// Raw or partial payloads sometimes omit the mentions array, so fall back to
-	// the mention syntax in the content.
+	// the mention syntax in the text — the message's own text and, because Discord
+	// does not parse embeds for the mentions array, every embed's text as well.
 	id := a.opts.SelfUserID.String()
-	return strings.Contains(m.Content, "<@"+id+">") || strings.Contains(m.Content, "<@!"+id+">")
+	for _, text := range mentionTexts(m) {
+		if strings.Contains(text, "<@"+id+">") || strings.Contains(text, "<@!"+id+">") {
+			return true
+		}
+	}
+	return false
+}
+
+// mentionTexts is every string in a message that can carry a mention.
+func mentionTexts(m discord.Message) []string {
+	out := []string{m.Content}
+	for _, e := range m.Embeds {
+		out = append(out, e.Title, e.Description)
+		if e.Author != nil {
+			out = append(out, e.Author.Name)
+		}
+		if e.Footer != nil {
+			out = append(out, e.Footer.Text)
+		}
+		for _, f := range e.Fields {
+			out = append(out, f.Name, f.Value)
+		}
+	}
+	return out
 }
 
 // replyMentions reports whether the reply content opens with a mention of the
