@@ -19,8 +19,9 @@ type Assets struct {
 	ScriptURL string
 	// ScriptIntegrity is the script's SRI hash.
 	ScriptIntegrity string
-	// CrossOrigin adds crossorigin="anonymous", which SRI requires for a
-	// cross-origin resource.
+	// CrossOrigin adds crossorigin="anonymous" to both tags, which SRI requires
+	// for a cross-origin resource. WithScript turns it on for the pinned pair
+	// unless you replaced Assets wholesale.
 	CrossOrigin bool
 }
 
@@ -35,7 +36,8 @@ func DefaultAssets() Assets {
 }
 
 // AssetsWithScript returns the pinned stylesheet and the enhancement script,
-// both verified with Subresource Integrity.
+// both verified with Subresource Integrity. WithScript does the same for the
+// script alone, leaving the stylesheet choice to WithCSS or WithShortTags.
 func AssetsWithScript() Assets {
 	return Assets{
 		CSSURL:          DefaultCSSURL,

@@ -304,13 +304,82 @@ func TestAssetsConfiguration(t *testing.T) {
 		t.Errorf("an explicit stylesheet should replace the default")
 	}
 
-	// Opting into the enhancement script.
-	withScript, err := tr.HTML(WithMedia(URLMedia()), WithAssets(AssetsWithScript()))
+	// Opting into the enhancement script, which defaults to the pinned release.
+	withScript, err := tr.HTML(WithMedia(URLMedia()), WithScript())
 	if err != nil {
 		t.Fatalf("script: %v", err)
 	}
 	if !strings.Contains(string(withScript), `<script defer src="`+DefaultScriptURL+`" integrity="`+DefaultScriptIntegrity+`" crossorigin="anonymous"></script>`) {
-		t.Errorf("AssetsWithScript should emit a deferred, verified script tag:\n%s", withScript)
+		t.Errorf("WithScript should emit a deferred, verified script tag:\n%s", withScript)
+	}
+	// The script is the pinned one, so a rebuild against a new UI release is the
+	// only thing that moves it.
+	if !strings.Contains(DefaultScriptURL, ContractVersion) {
+		t.Errorf("the pinned script URL %q should name contract %s", DefaultScriptURL, ContractVersion)
+	}
+
+	// The same, through the whole-assets helper.
+	same, err := tr.HTML(WithMedia(URLMedia()), WithAssets(AssetsWithScript()))
+	if err != nil {
+		t.Fatalf("assets with script: %v", err)
+	}
+	if string(same) != string(withScript) {
+		t.Errorf("WithScript and AssetsWithScript should agree on the script tag")
+	}
+
+	// A script from somewhere else, with the caller's own hash.
+	customScript, err := tr.HTML(
+		WithMedia(URLMedia()),
+		WithScriptURL("https://cdn.example.com/discord-transcript.min.js", "sha384-abc123"),
+	)
+	if err != nil {
+		t.Fatalf("custom script: %v", err)
+	}
+	if !strings.Contains(string(customScript), `src="https://cdn.example.com/discord-transcript.min.js" integrity="sha384-abc123"`) {
+		t.Errorf("WithScriptURL should use the URL and hash verbatim:\n%s", customScript)
+	}
+	if strings.Contains(string(customScript), DefaultScriptURL) {
+		t.Errorf("an explicit script URL should replace the default")
+	}
+
+	// The script survives the short-tag vocabulary, in either order.
+	for _, opts := range [][]Option{
+		{WithScript(), WithShortTags()},
+		{WithShortTags(), WithScript()},
+	} {
+		short, err := tr.HTML(append([]Option{WithMedia(URLMedia())}, opts...)...)
+		if err != nil {
+			t.Fatalf("short tags with script: %v", err)
+		}
+		if !strings.Contains(string(short), DefaultScriptURL) || !strings.Contains(string(short), DefaultShortCSSURL) {
+			t.Errorf("WithScript and WithShortTags should compose in either order:\n%s", short)
+		}
+	}
+
+	// A caller who assembled the whole Assets keeps their own CrossOrigin, so the
+	// pinned pair never re-opens a CORS request they turned off.
+	kept, err := tr.HTML(
+		WithMedia(URLMedia()),
+		WithAssets(Assets{CSSURL: "https://cdn.example.com/x.css", CSSIntegrity: "sha384-abc"}),
+		WithScript(),
+	)
+	if err != nil {
+		t.Fatalf("custom assets with script: %v", err)
+	}
+	if strings.Contains(string(kept), "crossorigin") {
+		t.Errorf("WithScript should not override an explicit Assets.CrossOrigin:\n%s", kept)
+	}
+	if !strings.Contains(string(kept), DefaultScriptURL) {
+		t.Errorf("but it should still add the pinned script")
+	}
+
+	// Opting back out.
+	off, err := tr.HTML(WithMedia(URLMedia()), WithScript(), WithoutScript())
+	if err != nil {
+		t.Fatalf("without script: %v", err)
+	}
+	if strings.Contains(string(off), "<script") {
+		t.Errorf("WithoutScript should omit the script tag")
 	}
 
 	// Omitting the stylesheet entirely.

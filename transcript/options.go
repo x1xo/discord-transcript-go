@@ -128,8 +128,33 @@ func WithCSS(url, integrity string) Option {
 	}
 }
 
-// WithScript adds the enhancement script, with an optional SRI hash.
-func WithScript(url, integrity string) Option {
+// WithScript adds the enhancement script that ships with the pinned UI release,
+// SRI hash and all. The URL and the hash come from the generated pins, so they
+// follow the UI every time this module is rebuilt against a new release; the
+// document still renders if the script never loads, because the markup is
+// already complete.
+//
+// This is the common way to opt in:
+//
+//	tr.WriteFile("transcript.html", transcript.WithScript())
+//
+// Use WithScriptURL to point at a copy you host yourself.
+func WithScript() Option {
+	return func(o *Options) {
+		o.Assets.ScriptURL = DefaultScriptURL
+		o.Assets.ScriptIntegrity = DefaultScriptIntegrity
+		// SRI on a cross-origin script needs crossorigin="anonymous" or the
+		// browser refuses to run it. A caller who replaced the whole Assets keeps
+		// their own choice: only the pinned pair is turned on here.
+		if !o.assetsConfigured {
+			o.Assets.CrossOrigin = true
+		}
+	}
+}
+
+// WithScriptURL points the document at an enhancement script somewhere else,
+// with an optional SRI hash. Pass an empty integrity to omit the attribute.
+func WithScriptURL(url, integrity string) Option {
 	return func(o *Options) {
 		o.Assets.ScriptURL = url
 		o.Assets.ScriptIntegrity = integrity

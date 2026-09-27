@@ -70,15 +70,23 @@ The stylesheet comes from a CDN and is pinned with Subresource Integrity. The
 defaults target the current `discord-transcript-ui` release:
 
 ```go
-tr.WriteFile("transcript.html") // https://cdn.jsdelivr.net/npm/discord-transcript-ui@1.0.1/…, SRI checked
+tr.WriteFile("transcript.html") // the pinned jsDelivr stylesheet, SRI checked
 ```
 
-Point it anywhere — your own host, a mirror, another version — by passing the URL
-and hash yourself:
+The enhancement script is a second, optional file. `transcript.WithScript()`
+adds it with the pinned URL and hash, which the generated pins refresh whenever
+this module is rebuilt against a new `discord-transcript-ui` release:
+
+```go
+tr.WriteFile("transcript.html", transcript.WithScript())
+```
+
+Point either file anywhere — your own host, a mirror, another version — by
+passing the URL and hash yourself:
 
 ```go
 transcript.WithCSS("https://cdn.example.com/discord-transcript.min.css", "sha384-…")
-transcript.WithScript("https://cdn.example.com/discord-transcript.min.js", "sha384-…")
+transcript.WithScriptURL("https://cdn.example.com/discord-transcript.min.js", "sha384-…")
 transcript.WithAssets(transcript.Assets{ /* full control, including CrossOrigin */ })
 transcript.WithoutStylesheet() // inject your own <link> yourself
 transcript.WithoutScript()     // the default: no script tag at all
@@ -88,7 +96,7 @@ The relevant constants, if you want to build your own tags or a CSP:
 
 | Constant | Value |
 | --- | --- |
-| `transcript.ContractVersion` | `1.0.1` — the markup contract this module emits |
+| `transcript.ContractVersion` | `1.1.2` — the markup contract this module emits |
 | `transcript.DefaultCSSURL` | jsDelivr URL of the pinned stylesheet |
 | `transcript.DefaultCSSIntegrity` | its `sha384-…` hash |
 | `transcript.DefaultShortCSSURL` | the same stylesheet with compact tag names |
@@ -97,7 +105,8 @@ The relevant constants, if you want to build your own tags or a CSP:
 | `transcript.DefaultScriptIntegrity` | its `sha384-…` hash |
 
 `AssetsWithScript()` returns the stylesheet and script together when you want the
-interactive extras.
+interactive extras as one `Assets` value; `WithScript()` is the same script on its
+own, which composes with `WithCSS` and `WithShortTags` in any order.
 
 The pinned defaults point at a specific `discord-transcript-ui` release. If that
 release is not on npm yet (or you would rather not depend on jsDelivr), pass your
@@ -107,7 +116,7 @@ releases.
 ## Compact tag names (opt-in)
 
 The default markup uses readable names (`<discord-message>`, `<discord-mention>`).
-`-short-tags` (or `transcript.WithShortTags()`) switches to a compact vocabulary
+`transcript.WithShortTags()` switches to a compact vocabulary
 and links the matching stylesheet automatically:
 
 ```go

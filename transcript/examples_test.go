@@ -30,7 +30,7 @@ func TestGenerateExamples(t *testing.T) {
 		options []Option
 	}{
 		{"transcript.html", exampleTranscript, nil},
-		{"transcript-interactive.html", exampleTranscript, []Option{WithAssets(AssetsWithScript())}},
+		{"transcript-interactive.html", exampleTranscript, []Option{WithScript()}},
 		{"transcript-short.html", exampleTranscript, []Option{WithShortTags()}},
 		{"transcript-embeds.html", exampleEmbedTranscript, nil},
 	}
