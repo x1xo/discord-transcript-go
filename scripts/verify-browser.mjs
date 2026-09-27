@@ -315,6 +315,24 @@ const result = await send('Runtime.evaluate', {
 			}
 		}
 
+		// A grouped line has no avatar of its own. The slot stays for the columns,
+		// but it must not keep an avatar's height: an invisible 32px box used to
+		// hold every continuation row open, spacing grouped lines apart.
+		const grouped = document.querySelector(T('message', 'dm') + '[data-dt-continuation]');
+		if (grouped) {
+			const groupedAvatar = grouped.querySelector('.dt-avatar');
+			check(
+				'continuation avatar takes no height',
+				groupedAvatar ? Math.round(groupedAvatar.getBoundingClientRect().height) : -1,
+				0
+			);
+			const columns = grouped.querySelector('.dt-content');
+			if (groupedAvatar && columns) {
+				// The content still starts where the avatars end, so the columns line up.
+				check('continuation keeps its column', Math.round(columns.getBoundingClientRect().left) > Math.round(grouped.getBoundingClientRect().left), true);
+			}
+		}
+
 		// When the script is included it must recognise the finished markup
 		// instead of duplicating it.
 		if (window.DiscordTranscript) {

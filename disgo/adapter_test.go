@@ -54,7 +54,7 @@ func TestBasicMessage(t *testing.T) {
 
 	for _, want := range []string{
 		`<discord-messages channel-name="general" channel-type="text">`,
-		`<discord-message profile="111111111111111111" author="Piton" timestamp="2024-03-15T14:28:00Z" data-dt-ready>`,
+		`<discord-message profile="111111111111111111" author="Piton" timestamp="2024-03-15T14:28:00Z" data-dt-r>`,
 		"hello <discord-bold>world</discord-bold>",
 		`<span class="dt-author">Piton</span>`,
 		`<span class="dt-avatar"><img src="https://cdn.discordapp.com/embed/avatars/`,
@@ -153,7 +153,7 @@ func TestReplyAndEditedAndEphemeralAndHighlight(t *testing.T) {
 		` edited`,
 		` ephemeral`,
 		` highlight`,
-		`<discord-reply mentions data-dt-ready><span class="dt-reply-avatar"><img src="https://cdn.discordapp.com/embed/avatars/`,
+		`<discord-reply mentions data-dt-r><span class="dt-reply-avatar"><img src="https://cdn.discordapp.com/embed/avatars/`,
 		`<span class="dt-reply-author">@Piton</span>the original text</discord-reply>`,
 	} {
 		if !strings.Contains(html, want) {
@@ -206,7 +206,7 @@ func TestEmbedsAttachmentsAndReactions(t *testing.T) {
 	html := render(t, New(), msg)
 
 	for _, want := range []string{
-		`<discord-embed color="#5865f2" style="--dt-embed-color:#5865f2" data-dt-ready>`,
+		`<discord-embed color="#5865f2" style="--dt-embed-color:#5865f2" data-dt-r>`,
 		`<span class="dt-embed-author">`,
 		`<a class="dt-embed-title" href="https://example.com"`,
 		`<discord-embed-description>Some <discord-bold>description</discord-bold></discord-embed-description>`,
@@ -214,13 +214,13 @@ func TestEmbedsAttachmentsAndReactions(t *testing.T) {
 		`<discord-embed-footer>`,
 		`<div class="dt-embed-image">`,
 		`<div class="dt-embed-thumbnail">`,
-		`<discord-image-attachment data-dt-ready><img src="https://cdn.discordapp.com/attachments/1/2/shot.png"`,
-		`<discord-video-attachment data-dt-ready><video controls`,
-		`<discord-audio-attachment data-dt-ready><audio controls`,
-		`<discord-image-attachment spoiler data-dt-ready><img src="https://cdn.discordapp.com/attachments/1/2/spoiler.png"`,
-		`<discord-file-attachment data-dt-ready name="report.pdf" bytes="1.5" bytes-unit="KB" type="PDF">`,
-		`<discord-reaction data-dt-ready reacted><span class="dt-reaction-emoji">🎉</span><span class="dt-reaction-count">3</span>`,
-		`<discord-reaction data-dt-ready><img class="dt-reaction-emoji" src="https://cdn.discordapp.com/emojis/999999999999999999.png?size=64" alt=":party:"`,
+		`<discord-image-attachment data-dt-r><img src="https://cdn.discordapp.com/attachments/1/2/shot.png"`,
+		`<discord-video-attachment data-dt-r><video controls`,
+		`<discord-audio-attachment data-dt-r><audio controls`,
+		`<discord-image-attachment spoiler data-dt-r><img src="https://cdn.discordapp.com/attachments/1/2/spoiler.png"`,
+		`<discord-file-attachment data-dt-r name="report.pdf" bytes="1.5" bytes-unit="KB" type="PDF">`,
+		`<discord-reaction data-dt-r reacted><span class="dt-reaction-emoji">🎉</span><span class="dt-reaction-count">3</span>`,
+		`<discord-reaction data-dt-r><img class="dt-reaction-emoji" src="https://cdn.discordapp.com/emojis/999999999999999999.png?size=64" alt=":party:"`,
 		`[sticker: wave]`,
 	} {
 		if !strings.Contains(html, want) {

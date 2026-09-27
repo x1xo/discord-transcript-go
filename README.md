@@ -124,7 +124,7 @@ and links the matching stylesheet automatically:
 
 ```go
 tr.WriteFile("small.html", transcript.WithShortTags())
-// <dms channel-name="general"><dm profile="…" data-dt-ready><div class="dt-msg">…
+// <dms channel-name="general"><dm profile="…" data-dt-r><div class="dt-msg">…
 // … <dme type="user">piton</dme> <dsp>spoiler</dsp> <dc>code</dc>
 ```
 

@@ -5,16 +5,16 @@ package transcript
 
 // ContractVersion is the discord-transcript-ui release whose markup contract
 // this module emits.
-const ContractVersion = "1.1.2"
+const ContractVersion = "1.1.3"
 
 // Pinned jsDelivr URLs and Subresource Integrity hashes for ContractVersion.
 // The stylesheet is all a transcript needs to render; the script adds optional
 // extras (click-to-reveal spoilers, copy buttons, viewer-local timestamps).
 const (
-	DefaultCSSURL            = "https://cdn.jsdelivr.net/npm/discord-transcript-ui@1.1.2/dist/discord-transcript.min.css"
-	DefaultCSSIntegrity      = "sha384-9Ie/pN0/r7Lm3gzo7/NrdXkOu+SgOu0sp7qhQGOt7zNQ4Uq5aLOhhsqoxrGjsNGo"
-	DefaultShortCSSURL       = "https://cdn.jsdelivr.net/npm/discord-transcript-ui@1.1.2/dist/discord-transcript.short.min.css"
-	DefaultShortCSSIntegrity = "sha384-Mk+pNhiixjM8MiZHTDJEdpKico/9FYnbf3sX8J2sHSm4WaDk5a0iXdbZSjRm4cAw"
-	DefaultScriptURL         = "https://cdn.jsdelivr.net/npm/discord-transcript-ui@1.1.2/dist/discord-transcript.min.js"
-	DefaultScriptIntegrity   = "sha384-PbU5DeSUSIsBrmUREzzD1PhuDyJDDgQ3+7rzuhpZXAhKMY/Iab4ZaEXzJsUiTZa4"
+	DefaultCSSURL            = "https://cdn.jsdelivr.net/npm/discord-transcript-ui@1.1.3/dist/discord-transcript.min.css"
+	DefaultCSSIntegrity      = "sha384-6udom5UmVW73PwlqX2jbp5VbegLaeC4IuNN5BCCpOdJtFfiqdnezqgOkN8RQ29S/"
+	DefaultShortCSSURL       = "https://cdn.jsdelivr.net/npm/discord-transcript-ui@1.1.3/dist/discord-transcript.short.min.css"
+	DefaultShortCSSIntegrity = "sha384-andCTzXb9k0YE096+h8cviJQqRUQersMOkD5xDYXJWZ8dd/ibPxllAj0U9tRHdiy"
+	DefaultScriptURL         = "https://cdn.jsdelivr.net/npm/discord-transcript-ui@1.1.3/dist/discord-transcript.min.js"
+	DefaultScriptIntegrity   = "sha384-iRK/0pMRltdkS5TdpIt2V10EDSetuHw0hOlVpMsjl5lzhkXGqUU2Qyl0bDdosGH2"
 )

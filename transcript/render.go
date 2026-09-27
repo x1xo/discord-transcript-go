@@ -13,7 +13,7 @@ import (
 // Output is compact on purpose: no indentation, no newlines and no comments, so
 // the file is as small as it can be while staying readable to a browser. Every
 // element that carries a structure the enhancement script would otherwise build
-// is marked data-dt-ready, so the script (when included) leaves it alone
+// is marked data-dt-r, so the script (when included) leaves it alone
 // instead of rebuilding it.
 type renderer struct {
 	ctx context.Context
@@ -80,7 +80,7 @@ func (r *renderer) writeMessage(m Message, g grouping) {
 	} else if g.groupStart {
 		r.flag("data-dt-group-start")
 	}
-	r.flag("data-dt-ready")
+	r.flag("data-dt-r")
 	r.b.WriteString(">")
 
 	r.b.WriteString(`<div class="dt-msg`)
@@ -186,7 +186,7 @@ func (r *renderer) writeReply(reply Reply) {
 		r.b.WriteString("></discord-reply>")
 		return
 	}
-	r.flag("data-dt-ready")
+	r.flag("data-dt-r")
 	r.b.WriteString(">")
 	if reply.Author.AvatarURL != "" {
 		r.b.WriteString(`<span class="dt-reply-avatar">`)
@@ -210,7 +210,7 @@ func (r *renderer) writeEmbed(e Embed) {
 		// and the enhancement script skips rows already marked ready.
 		r.b.WriteString(` style="--dt-embed-color:` + escapeText(e.Color) + `"`)
 	}
-	r.flag("data-dt-ready")
+	r.flag("data-dt-r")
 	r.b.WriteString(">")
 
 	if e.Provider != "" {
@@ -302,7 +302,7 @@ func (r *renderer) writeAttachments(list []Attachment) {
 			if a.Spoiler {
 				r.flag("spoiler")
 			}
-			r.flag("data-dt-ready")
+			r.flag("data-dt-r")
 			r.b.WriteString(">")
 			r.writeVideo(Media{URL: a.URL, Alt: a.Alt, Kind: MediaVideo})
 			r.b.WriteString(`</discord-video-attachment>`)
@@ -311,7 +311,7 @@ func (r *renderer) writeAttachments(list []Attachment) {
 			if src == "" {
 				continue
 			}
-			r.b.WriteString(`<discord-audio-attachment data-dt-ready><audio controls preload="metadata" src="` +
+			r.b.WriteString(`<discord-audio-attachment data-dt-r><audio controls preload="metadata" src="` +
 				escapeText(src) + `"></audio></discord-audio-attachment>`)
 		case MediaFile:
 			r.writeFileAttachment(a)
@@ -320,7 +320,7 @@ func (r *renderer) writeAttachments(list []Attachment) {
 			if a.Spoiler {
 				r.flag("spoiler")
 			}
-			r.flag("data-dt-ready")
+			r.flag("data-dt-r")
 			r.b.WriteString(">")
 			r.writeImage(a)
 			r.b.WriteString(`</discord-image-attachment>`)
@@ -336,7 +336,7 @@ func (r *renderer) writeFileAttachment(a Attachment) {
 	}
 	kind := strings.ToUpper(fileKind(a.Name))
 
-	r.b.WriteString(`<discord-file-attachment data-dt-ready`)
+	r.b.WriteString(`<discord-file-attachment data-dt-r`)
 	r.attr("name", a.Name)
 	if size != "" {
 		number, unit := splitSize(size)
@@ -360,7 +360,7 @@ func (r *renderer) writeFileAttachment(a Attachment) {
 func (r *renderer) writeReactions(list []Reaction) {
 	r.b.WriteString(`<discord-reactions>`)
 	for _, reaction := range list {
-		r.b.WriteString(`<discord-reaction data-dt-ready`)
+		r.b.WriteString(`<discord-reaction data-dt-r`)
 		if reaction.Reacted {
 			r.flag("reacted")
 		}
@@ -436,7 +436,7 @@ func (r *renderer) writeNode(n Node) {
 	case NodeStrikethrough:
 		r.wrap("discord-strikethrough", n.Children)
 	case NodeSpoiler:
-		// No data-dt-ready: the script adds click-to-reveal, the stylesheet
+		// No data-dt-r: the script adds click-to-reveal, the stylesheet
 		// already hides it.
 		r.wrap("discord-spoiler", n.Children)
 	case NodeSubtext:
@@ -503,7 +503,7 @@ func (r *renderer) writeNode(n Node) {
 		}
 		r.b.WriteString(`</discord-custom-emoji>`)
 	case NodeTimestamp:
-		// No data-dt-ready: with the script the text becomes the reader's local
+		// No data-dt-r: with the script the text becomes the reader's local
 		// format, without it the absolute text below stands on its own.
 		r.b.WriteString(`<discord-time`)
 		r.attr("timestamp", r.iso(n.Timestamp))
@@ -719,7 +719,7 @@ func (r *renderer) iso(t time.Time) string {
 // It is computed when the transcript is written, so a document generated today
 // says "11:49PM" for a message from today even when it is read years later. That
 // is inherent to the format; the enhancement script recomputes it for the
-// markup it builds itself, but not for rows this renderer marks data-dt-ready.
+// markup it builds itself, but not for rows this renderer marks data-dt-r.
 func (r *renderer) headerStamp(t time.Time) string {
 	if t.IsZero() {
 		return ""

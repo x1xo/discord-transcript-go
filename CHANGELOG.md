@@ -4,6 +4,19 @@ Versions here belong to the Go module and move on their own. The markup contract
 the renderer emits is `transcript.ContractVersion`, generated from the
 `discord-transcript-ui` build, and it is listed per release below.
 
+## 1.4.1
+
+Contract: `discord-transcript-ui` **1.1.3** (was 1.1.2).
+
+* Emits the shorter ready marker, `data-dt-r`, four bytes less on every message,
+  reply, embed, attachment and reaction. The 1.1.3 stylesheet reads the old
+  `data-dt-ready` name too, so transcripts archived from earlier releases keep
+  rendering — but this renderer needs the 1.1.3 stylesheet, because 1.1.2 does not
+  know the short name and would draw its attr-only fallbacks twice.
+* Nothing else changed in the module: the grouped-line spacing fix in this
+  release is in the stylesheet (`[data-dt-continuation]` avatars are now zero
+  height), which is why the contract moved.
+
 ## 1.4.0
 
 Contract: `discord-transcript-ui` 1.1.2 (unchanged).
