@@ -76,13 +76,13 @@ func discordSize(edge int) int {
 	return size
 }
 
-// ShrinkImage downscales an in-memory image so its longest side is at most
+// shrinkImage downscales an in-memory image so its longest side is at most
 // edge, re-encoding it in the format it arrived in, and returns the content type
 // that goes with the bytes it produced.
 //
-// The built-in stores call this for the MediaRef.TargetEdge they are given. A
-// custom MediaStore can call it too, and should, or avatars will keep arriving
-// at ten times the size they are drawn at.
+// The renderer applies it to whatever came back inline, so every store gets
+// right-sized media without having to opt in. DirMedia applies it before writing
+// a file, because the document only ever sees the path.
 //
 // It is deliberately conservative: the original bytes are returned whenever the
 // result would not be smaller. An image that is already small, animated (GIF),
@@ -90,7 +90,7 @@ func discordSize(edge int) int {
 // is passed through untouched rather than re-encoded into something larger or
 // flatter. That also means a caller can enable this without ever making a
 // document bigger.
-func ShrinkImage(data []byte, contentType string, edge int) ([]byte, string) {
+func shrinkImage(data []byte, contentType string, edge int) ([]byte, string) {
 	if edge <= 0 || len(data) == 0 {
 		return data, contentType
 	}
@@ -147,7 +147,7 @@ func shrinkDataURI(uri string, edge int) string {
 	if err != nil {
 		return uri
 	}
-	shrunk, newType := ShrinkImage(data, contentType, edge)
+	shrunk, newType := shrinkImage(data, contentType, edge)
 	if newType == contentType && len(shrunk) == len(data) {
 		return uri
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -112,31 +113,105 @@ func TestWithoutMediaPoolKeepsEveryCopy(t *testing.T) {
 	}
 }
 
-func TestInlineMediaStoreRightSizesAnInlineBlob(t *testing.T) {
-	// A producer that hands over data URIs gets them right-sized too, which is
-	// how the committed examples shrink.
+// urlStore records what the renderer asked for and hands back a fixed blob, the
+// way a caller's own store would.
+type urlStore struct {
+	blob string
+	seen []MediaRef
+}
+
+func (s *urlStore) Store(_ context.Context, ref MediaRef) (string, error) {
+	s.seen = append(s.seen, ref)
+	return s.blob, nil
+}
+
+func TestTheSizeWantedReachesTheStoreAndTheBytesComeBackRightSized(t *testing.T) {
+	// A custom store gets both halves of right-sizing for free: the size we draw
+	// at is already in the URL it is handed, so a proxy behind it fetches the
+	// small copy, and whatever it returns inline is downscaled on the way out.
+	// The store never has to know that TargetEdge exists.
 	source := noisyPNG(t, 128)
-	uri := "data:image/png;base64," + base64.StdEncoding.EncodeToString(source)
+	blob := "data:image/png;base64," + base64.StdEncoding.EncodeToString(source)
+	store := &urlStore{blob: blob}
 
-	store := InlineMedia()
-	out, err := store.Store(context.Background(), MediaRef{URL: uri, Kind: MediaAvatar, TargetEdge: 64})
+	at := time.Date(2024, 3, 15, 14, 28, 0, 0, time.UTC)
+	tr := &Transcript{
+		Channel: Channel{Name: "general", Type: ChannelText},
+		Messages: []Message{{
+			Author:    Author{Key: "1", Name: "piton", AvatarURL: "https://cdn.discordapp.com/avatars/1/abc.png"},
+			Timestamp: at,
+			Embeds: []Embed{{
+				Description: ParseContent("hi"),
+				Thumbnail:   &Media{URL: "https://cdn.discordapp.com/attachments/1/2/thumb.png"},
+				Image:       &Media{URL: "https://cdn.discordapp.com/attachments/1/2/full.png"},
+			}},
+		}},
+	}
+
+	page := render(t, tr, WithMedia(store), WithoutMediaPool())
+
+	// Fixed-size Discord images are asked for at the size they are drawn at; an
+	// attachment is content, and is left exactly as the producer wrote it.
+	for _, want := range []string{
+		"https://cdn.discordapp.com/avatars/1/abc.png?size=64",
+		"https://cdn.discordapp.com/attachments/1/2/thumb.png",
+		"https://cdn.discordapp.com/attachments/1/2/full.png",
+	} {
+		if !slices.Contains(refURLs(store.seen), want) {
+			t.Errorf("the store was never handed %s, saw %v", want, refURLs(store.seen))
+		}
+	}
+	for _, ref := range store.seen {
+		if strings.HasPrefix(ref.URL, "https://cdn.discordapp.com/avatars/") && !strings.Contains(ref.URL, "size=") {
+			t.Errorf("the avatar reached the store unsized: %s", ref.URL)
+		}
+	}
+
+	// The oversized blob the store handed back is downscaled before it reaches the
+	// page: the avatar is drawn at 32 CSS pixels, so it arrives at 64.
+	avatarSrc := between(page, `<span class="dt-avatar"><img src="`, `"`)
+	if avatarSrc == blob {
+		t.Fatalf("an oversized inline blob from a custom store should be downscaled")
+	}
+	bounds := decodePNG(t, decodeDataURI(t, avatarSrc)).Bounds()
+	if bounds.Dx() != 64 || bounds.Dy() != 64 {
+		t.Errorf("the avatar should be right-sized to 64x64, got %v", bounds)
+	}
+	// The embed image is content: it keeps every byte it arrived with.
+	if imageSrc := between(page, `<div class="dt-embed-image"><img src="`, `"`); imageSrc != blob {
+		t.Errorf("content images should keep their original bytes")
+	}
+}
+
+// between returns the text between two markers, or "" when either is missing.
+func between(text, after, before string) string {
+	_, rest, ok := strings.Cut(text, after)
+	if !ok {
+		return ""
+	}
+	value, _, _ := strings.Cut(rest, before)
+	return value
+}
+
+func decodeDataURI(t *testing.T, uri string) []byte {
+	t.Helper()
+	_, payload, ok := strings.Cut(uri, ",")
+	if !ok {
+		t.Fatalf("not a data URI: %.40s", uri)
+	}
+	raw, err := base64.StdEncoding.DecodeString(payload)
 	if err != nil {
-		t.Fatalf("store: %v", err)
+		t.Fatalf("decode data URI: %v", err)
 	}
-	if len(out) >= len(uri) {
-		t.Errorf("an oversized inline avatar should shrink: %d -> %d", len(uri), len(out))
-	}
+	return raw
+}
 
-	// The same request twice is cached, and a different edge is a different
-	// entry, not a downgrade of the first.
-	again, _ := store.Store(context.Background(), MediaRef{URL: uri, Kind: MediaAvatar, TargetEdge: 64})
-	if again != out {
-		t.Errorf("the store should cache per request")
+func refURLs(refs []MediaRef) []string {
+	out := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, ref.URL)
 	}
-	capped, _ := store.Store(context.Background(), MediaRef{URL: uri, Kind: MediaAvatar, TargetEdge: 0})
-	if capped != uri {
-		t.Errorf("an uncapped request should get the original bytes")
-	}
+	return out
 }
 
 // render is a shorthand for the assertions above.

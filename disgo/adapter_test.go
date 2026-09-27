@@ -220,7 +220,7 @@ func TestEmbedsAttachmentsAndReactions(t *testing.T) {
 		`<discord-image-attachment spoiler data-dt-ready><img src="https://cdn.discordapp.com/attachments/1/2/spoiler.png"`,
 		`<discord-file-attachment data-dt-ready name="report.pdf" bytes="1.5" bytes-unit="KB" type="PDF">`,
 		`<discord-reaction data-dt-ready reacted><span class="dt-reaction-emoji">🎉</span><span class="dt-reaction-count">3</span>`,
-		`<discord-reaction data-dt-ready><img class="dt-reaction-emoji" src="https://cdn.discordapp.com/emojis/999999999999999999.png" alt=":party:"`,
+		`<discord-reaction data-dt-ready><img class="dt-reaction-emoji" src="https://cdn.discordapp.com/emojis/999999999999999999.png?size=64" alt=":party:"`,
 		`[sticker: wave]`,
 	} {
 		if !strings.Contains(html, want) {

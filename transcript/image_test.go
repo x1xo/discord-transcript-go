@@ -46,7 +46,7 @@ func decodePNG(t *testing.T, data []byte) image.Image {
 func TestShrinkImageDownscalesAndKeepsTheSmallerBytes(t *testing.T) {
 	source := noisyPNG(t, 128)
 
-	shrunk, contentType := ShrinkImage(source, "image/png", 64)
+	shrunk, contentType := shrinkImage(source, "image/png", 64)
 	if contentType != "image/png" {
 		t.Fatalf("content type should survive a re-encode, got %q", contentType)
 	}
@@ -59,24 +59,24 @@ func TestShrinkImageDownscalesAndKeepsTheSmallerBytes(t *testing.T) {
 
 	// A zero edge means "keep the original", which is how an attachment asks to
 	// be left alone.
-	if got, _ := ShrinkImage(source, "image/png", 0); !bytes.Equal(got, source) {
+	if got, _ := shrinkImage(source, "image/png", 0); !bytes.Equal(got, source) {
 		t.Errorf("edge 0 should pass the bytes through untouched")
 	}
 
 	// Already small enough: never re-encode, never grow.
 	small := noisyPNG(t, 32)
-	if got, _ := ShrinkImage(small, "image/png", 64); !bytes.Equal(got, small) {
+	if got, _ := shrinkImage(small, "image/png", 64); !bytes.Equal(got, small) {
 		t.Errorf("an image within the edge should keep its original bytes")
 	}
 
 	// Formats without a decoder in the standard library stay as they are.
 	webp := append([]byte("RIFF\x00\x00\x00\x00WEBPVP8 "), source...)
-	if got, ct := ShrinkImage(webp, "image/webp", 64); !bytes.Equal(got, webp) || ct != "image/webp" {
+	if got, ct := shrinkImage(webp, "image/webp", 64); !bytes.Equal(got, webp) || ct != "image/webp" {
 		t.Errorf("an undecodable format should pass through untouched")
 	}
 	// So do vector and animated ones: re-encoding would flatten them.
 	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"></svg>`)
-	if got, _ := ShrinkImage(svg, "image/svg+xml", 64); !bytes.Equal(got, svg) {
+	if got, _ := shrinkImage(svg, "image/svg+xml", 64); !bytes.Equal(got, svg) {
 		t.Errorf("svg should pass through untouched")
 	}
 }

@@ -193,10 +193,11 @@ would otherwise be copied into the file once per message. Both are handled for
 you, and neither needs a script or a newer stylesheet:
 
 * **Right-sizing.** Every media request carries the size it is drawn at
-  (`MediaRef.TargetEdge`, twice the CSS size), so a fixed-size Discord image is
-  requested at that size and anything else is downscaled in Go. It never grows a
-  file: an image that is already small enough, animated, vector, or in a format
-  the standard library cannot decode keeps its original bytes.
+  (`MediaRef.TargetEdge`, twice the CSS size): the URL handed to your store
+  already names it (`…/avatars/1/abc.png?size=64`), and anything that comes back
+  inline still too large is downscaled in Go. It never grows a file: an image
+  that is already small enough, animated, vector, or in a format the standard
+  library cannot decode keeps its original bytes.
 * **One copy.** A blob that appears more than once — an avatar in twenty
   messages, the same icon in an embed — is stored once in a
   `<style data-dt-media-pool>` block and every use becomes
@@ -224,17 +225,16 @@ gzip does not rescue repetition on its own: a base64 avatar is larger than gzip'
 attachment, an embed image — stay real `<img>` elements with their own bytes, so
 `alt` text and printing keep working.
 
-Two caveats before wiring this into a pipeline:
+Both halves live in the renderer, so they apply to every store — your own, and
+any proxy behind its fetcher — with no code on your side: the URL already asks
+for the size, and the bytes are corrected on the way out. What a fetcher does
+with that URL is up to it, as always.
 
-* A custom `transcript.MediaStore` replaces the built-in stores, so it has to
-  right-size for itself: call
-  `transcript.ShrinkImage(data, contentType, ref.TargetEdge)`, which returns the
-  bytes and the content type that goes with them.
-* Pooled media is a background image rather than an `<img>`. Nothing in the
-  stylesheet or the script needs to know that, but a strict
-  Content-Security-Policy has to allow the inline `<style>`
-  (`style-src 'unsafe-inline'`, or a nonce) and `img-src data:`.
-  `WithoutMediaPool()` gives you plain `<img>` elements back.
+One thing to keep in mind before wiring this into a pipeline: pooled media is a
+background image rather than an `<img>`. Nothing in the stylesheet or the script
+needs to know that, but a strict Content-Security-Policy has to allow the inline
+`<style>` (`style-src 'unsafe-inline'`, or a nonce) and `img-src data:`.
+`WithoutMediaPool()` gives you plain `<img>` elements back.
 
 ### Routing downloads through your own proxy
 

@@ -30,9 +30,11 @@ type MediaRef struct {
 	// TargetEdge is the longest edge, in device pixels, that this media is drawn
 	// at — twice the CSS size — or 0 when it is content the reader may zoom into.
 	//
-	// A store may use it to ask the origin for a smaller copy and to downscale
-	// what it downloads; InlineMedia and DirMedia both do. It is a hint, never a
-	// requirement: a store that ignores it is still correct, just bigger.
+	// The renderer fills this in, and by the time a store sees the ref the URL
+	// already carries the size the origin can serve (Discord's fixed-size
+	// endpoints get `?size=`), so a store or a proxy behind it downloads the small
+	// copy. Whatever comes back inline is downscaled by the renderer, so a store
+	// that ignores this field is still correct — it just moves more bytes.
 	TargetEdge int
 }
 
@@ -203,8 +205,10 @@ func URLMedia() MediaStore { return MediaStoreFunc(nil) }
 // document that keeps working when the original CDN object is gone. This is the
 // default, and it is why a finished transcript is a single self-contained file.
 //
-// The cost is size: base64 adds ~33% and inline images are not shared between
-// transcripts. Pass DirMedia or a custom store when that matters more.
+// The cost is size: base64 adds ~33%, and the copies are not shared between
+// transcripts. Within one document the renderer right-sizes what a store returns
+// and stores each repeated blob once, so the overhead is bounded; pass DirMedia
+// or a custom store when you would rather serve the media yourself.
 func InlineMedia() *InlineMediaStore {
 	return &InlineMediaStore{
 		Fetcher: HTTPFetcher{},
@@ -243,16 +247,11 @@ func (s *InlineMediaStore) Store(ctx context.Context, ref MediaRef) (string, err
 	}
 	s.mu.Unlock()
 
-	// Already inline: there is nothing to download, but an oversized blob still
-	// gets right-sized, which is what a producer that pre-inlines its media needs.
-	if strings.HasPrefix(ref.URL, "data:") {
-		return s.remember(key, shrinkDataURI(ref.URL, ref.TargetEdge)), nil
-	}
-	// Anything local (a relative path, a file URL): nothing to do.
-	if !isRemote(ref.URL) {
+	// Already inline or local: there is nothing to download. Right-sizing an
+	// inline blob is the renderer's job, and it happens there for every store.
+	if strings.HasPrefix(ref.URL, "data:") || !isRemote(ref.URL) {
 		return ref.URL, nil
 	}
-
 	fetcher := s.Fetcher
 	if fetcher == nil {
 		fetcher = HTTPFetcher{}
@@ -264,15 +263,17 @@ func (s *InlineMediaStore) Store(ctx context.Context, ref MediaRef) (string, err
 	if max <= 0 {
 		max = DefaultMaxMediaBytes
 	}
-	// Ask the origin for a smaller copy first; downscale whatever still arrives
-	// too large. Both are no-ops when the renderer asked for no target edge.
+	// The renderer already put the size it wants in the URL; this is for a caller
+	// using the store on its own.
 	fetchRef := ref
 	fetchRef.URL = discordSizedURL(ref.URL, ref.TargetEdge)
 	data, contentType, err := fetcher.Fetch(ctx, fetchRef, max)
 	if err != nil {
 		return ref.URL, err
 	}
-	data, contentType = ShrinkImage(data, normalizedContentType(data, contentType), ref.TargetEdge)
+	// The bytes are inlined as they arrived. Right-sizing an inline blob is the
+	// renderer's job, and it does it for every store, so it lives in one place.
+	contentType = normalizedContentType(data, contentType)
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
@@ -355,7 +356,7 @@ func (s *DirMediaStore) Store(ctx context.Context, ref MediaRef) (string, error)
 		return ref.URL, err
 	}
 	contentType = normalizedContentType(data, contentType)
-	data, contentType = ShrinkImage(data, contentType, ref.TargetEdge)
+	data, contentType = shrinkImage(data, contentType, ref.TargetEdge)
 
 	name := mediaFilename(ref, contentType)
 	write := s.WriteFile

@@ -19,6 +19,10 @@ type renderer struct {
 	ctx context.Context
 	o   *Options
 	b   strings.Builder
+	// mediaMemo remembers what an inline blob became at a given edge, so a store
+	// that hands back the same data URI for every message is only re-encoded once
+	// per render.
+	mediaMemo map[string]string
 }
 
 func renderFragment(ctx context.Context, t *Transcript, o *Options) (string, error) {
@@ -621,6 +625,11 @@ func (r *renderer) resolve(ref MediaRef) string {
 	if ref.URL == "" {
 		return ""
 	}
+	// Ask the origin for the size we need before anyone fetches it. The store —
+	// or the proxy sitting behind the store's fetcher — then downloads the small
+	// copy instead of the 1024px original, and a store that ignores the query is
+	// corrected below.
+	ref.URL = discordSizedURL(ref.URL, ref.TargetEdge)
 	if r.o.Media == nil {
 		return ref.URL
 	}
@@ -632,6 +641,26 @@ func (r *renderer) resolve(ref MediaRef) string {
 	if out == "" {
 		return ref.URL
 	}
+	return r.rightSize(out, ref.TargetEdge)
+}
+
+// rightSize downscales an image that came back inline, whichever store produced
+// it. A custom MediaStore therefore gets right-sized media without having to
+// know that MediaRef.TargetEdge exists — the pipeline does it on the way out.
+func (r *renderer) rightSize(uri string, edge int) string {
+	if edge <= 0 || !strings.HasPrefix(uri, "data:image/") {
+		// A file path or a remote URL carries no bytes to re-encode here.
+		return uri
+	}
+	key := uri + "|" + itoa(edge)
+	if r.mediaMemo == nil {
+		r.mediaMemo = make(map[string]string, 8)
+	}
+	if cached, ok := r.mediaMemo[key]; ok {
+		return cached
+	}
+	out := shrinkDataURI(uri, edge)
+	r.mediaMemo[key] = out
 	return out
 }
 
