@@ -204,6 +204,40 @@ const result = await send('Runtime.evaluate', {
 			}
 		}
 
+		// Embed text is a document of its own. A description or a field value may
+		// carry a heading, a list, a quote and a fenced block, and each has to
+		// render as the block it is instead of collapsing into one flat line.
+		const styledDescription = all(T('embed-description', 'ded')).find((node) => node.querySelector(T('header', 'dh')));
+		if (styledDescription) {
+			const styledHeader = styledDescription.querySelector(T('header', 'dh'));
+			check('embed description heading keeps its level', styledHeader.getAttribute('level'), '1');
+			check(
+				'embed description heading is larger than its text',
+				parseFloat(style(styledHeader, 'font-size')) > parseFloat(style(styledDescription, 'font-size')),
+				true
+			);
+			const styledList = styledDescription.querySelector(T('unordered-list', 'dul'));
+			check(
+				'embed description list keeps its items',
+				styledList ? styledList.querySelectorAll(T('list-item', 'dli')).length : 0,
+				2
+			);
+			check('embed description list draws bullets', styledList ? style(styledList.children[0], 'list-style-type') : '', 'disc');
+			check(
+				'embed description quote keeps its bar',
+				parseFloat(style(styledDescription.querySelector(T('quote', 'dq')), 'border-left-width')) > 0,
+				true
+			);
+			const styledCode = styledDescription.querySelector(T('pre', 'dp'));
+			check('embed description code block keeps its text', !!styledCode && styledCode.textContent.includes('adapter.Transcript'), true);
+			check('embed description code block keeps its newlines', styledCode ? style(styledCode.querySelector(T('code', 'dc')), 'white-space') : '', 'pre');
+			check('embed description keeps its small print', styledDescription.querySelector(T('subscript', 'dsub')) !== null, true);
+		}
+		const styledField = all(T('embed-field', 'def')).find((node) => node.querySelector(T('pre', 'dp')));
+		if (styledField) {
+			check('embed field code block keeps its text', styledField.textContent.includes('panic: assignment to entry in nil map'), true);
+		}
+
 		// Timestamps: message headers show the short date and time for anything
 		// older than yesterday ("3/15/24, 2:28 PM"). The compact form
 		// ("11:49PM") and the "Yesterday at …" prefix only appear for recent

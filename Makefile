@@ -25,6 +25,7 @@ verify: test example
 	node scripts/verify-browser.mjs examples/transcript.html --css ../dist/discord-transcript.min.css
 	node scripts/verify-browser.mjs examples/transcript-interactive.html --css ../dist/discord-transcript.min.css
 	node scripts/verify-browser.mjs examples/transcript-short.html --css ../dist/discord-transcript.short.min.css
+	node scripts/verify-browser.mjs examples/transcript-embeds.html --css ../dist/discord-transcript.min.css
 
 clean:
 	rm -f examples/*.html

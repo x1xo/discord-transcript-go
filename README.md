@@ -129,10 +129,10 @@ different-version stylesheet still works. This needs `discord-transcript-ui`
 
 ## Examples
 
-`examples/` holds three committed transcripts — the default, one with the
-optional script, and one with the compact tag names — which
-`scripts/verify-browser.mjs` renders in a real browser. Regenerate them after a
-renderer change:
+`examples/` holds four committed transcripts — the default, one with the
+optional script, one with the compact tag names, and one whose embeds carry
+styled text (`transcript-embeds.html`) — which `scripts/verify-browser.mjs`
+renders in a real browser. Regenerate them after a renderer change:
 
 ```bash
 make example      # or: go test ./transcript -run TestGenerateExamples -update
@@ -233,6 +233,13 @@ Messages: author identity (nickname, guild avatar, role colour), timestamps,
 image, video, thumbnail), attachments (image, video, audio, file, spoilers),
 reactions, system messages (`MessageType` → join/leave/call/boost/edit/pin/thread),
 and continuation grouping computed at render time.
+
+An embed description and every field value are parsed as markdown documents, not
+as one line of text: headings, lists, quotes, fenced blocks and subtext inside an
+embed reach the markup as the elements they are. `examples/transcript-embeds.html`
+is a ticket bot's reply and shows all of it. Reply previews, system messages and
+thread previews stay single-line instead, because those slots render a snippet
+rather than a document — they keep the text of a code block, but not its frame.
 
 Not yet: threads, buttons and select menus, stickers (kept as `[sticker: name]` so
 nothing is lost), polls, forwarded snapshots and slash-command rows. The model and

@@ -233,7 +233,10 @@ func (r *renderer) writeEmbed(e Embed) {
 	}
 	if len(e.Description) > 0 {
 		r.b.WriteString(`<discord-embed-description>`)
-		r.writeNodes(inlineOnly(e.Description))
+		// An embed description is a document, not a single line: headings, lists,
+		// quotes and fenced blocks are what the author wrote there, and flattening
+		// them dropped the structure (and, for a code block, the text with it).
+		r.writeNodes(e.Description)
 		r.b.WriteString(`</discord-embed-description>`)
 	}
 	if len(e.Fields) > 0 {
@@ -245,7 +248,7 @@ func (r *renderer) writeEmbed(e Embed) {
 				r.flag("inline")
 			}
 			r.b.WriteString(">")
-			r.writeNodes(inlineOnly(f.Value))
+			r.writeNodes(f.Value)
 			r.b.WriteString(`</discord-embed-field>`)
 		}
 		r.b.WriteString(`</discord-embed-fields>`)
@@ -737,14 +740,23 @@ func initial(name string) string {
 	return "?"
 }
 
-// inlineOnly drops block-level nodes, for places that only accept phrasing
-// content (a system message body, an embed description).
+// inlineOnly unwraps block-level nodes for the places that render one line of
+// preview text rather than a document: a system message, a reply's quoted
+// message and a thread preview. Embeds are not among them — a description or a
+// field value keeps its headings, lists, quotes and code blocks.
 func inlineOnly(nodes []Node) []Node {
 	out := make([]Node, 0, len(nodes))
 	for _, n := range nodes {
 		switch n.Kind {
-		case NodeQuote, NodeList, NodeCodeBlock, NodeHeading:
+		case NodeQuote, NodeList, NodeHeading:
 			out = append(out, n.Children...)
+		case NodeCodeBlock:
+			// Unwrapping would take the text with the wrapper, because a code
+			// block carries its body in Text, not in Children. Keep the body as
+			// plain text so a preview never drops what was said.
+			if n.Text != "" {
+				out = append(out, Text(n.Text))
+			}
 		default:
 			out = append(out, n)
 		}

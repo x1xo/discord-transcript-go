@@ -535,4 +535,48 @@ func TestSystemMessageContentIsInline(t *testing.T) {
 	if strings.Contains(string(doc), "<discord-pre>") {
 		t.Errorf("system messages should not contain block elements")
 	}
+	// Unwrapping a code block used to take its body with it, because a code block
+	// keeps its text in Text and has no children to fall back on.
+	if !strings.Contains(string(doc), "not a block here") {
+		t.Errorf("a system message must not lose the text of a code block:\n%s", doc)
+	}
+}
+
+func TestEmbedDescriptionKeepsItsBlocks(t *testing.T) {
+	// An embed description is a document, not one line of preview text: headings,
+	// lists, quotes, code blocks and subtext have to reach the markup, in the
+	// description and in field values alike.
+	tr := &Transcript{
+		Channel: Channel{Name: "general", Type: ChannelText},
+		Messages: []Message{{
+			Author: Author{Key: "1", Name: "ticket bot"},
+			Embeds: []Embed{{
+				Description: ParseContent("# Ticket\n\nopen since yesterday\n\n## Steps\n- one\n- two\n1. first\n> quoted\n```go\nfmt.Println()\n```\n-# from the bot"),
+				Fields: []EmbedField{
+					{Name: "Status", Value: ParseContent("**Open**"), Inline: true},
+					{Name: "Log", Value: ParseContent("```\npanic: nil map\n```")},
+				},
+			}},
+		}},
+	}
+
+	doc, err := tr.HTML(WithMedia(URLMedia()))
+	if err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	for _, want := range []string{
+		`<discord-embed-description><discord-header level="1">Ticket</discord-header>`,
+		`<discord-header level="2">Steps</discord-header>`,
+		`<discord-unordered-list><discord-list-item>one</discord-list-item><discord-list-item>two</discord-list-item></discord-unordered-list>`,
+		`<discord-ordered-list start="1"><discord-list-item>first</discord-list-item></discord-ordered-list>`,
+		`<discord-quote>quoted</discord-quote>`,
+		`<discord-pre><span class="dt-code-lang">go</span><discord-code>fmt.Println()</discord-code></discord-pre>`,
+		`<discord-subscript>from the bot</discord-subscript>`,
+		`<discord-embed-field field-title="Status" inline><discord-bold>Open</discord-bold></discord-embed-field>`,
+		`<discord-embed-field field-title="Log"><discord-pre><discord-code>panic: nil map</discord-code></discord-pre></discord-embed-field>`,
+	} {
+		if !strings.Contains(string(doc), want) {
+			t.Errorf("missing %s in the rendered embed:\n%s", want, doc)
+		}
+	}
 }

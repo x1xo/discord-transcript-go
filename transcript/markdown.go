@@ -79,7 +79,12 @@ func (p *parser) parseBlocks(lines []string) []Node {
 			text := strings.TrimSpace(strings.TrimPrefix(trimmed, "-# "))
 			out = append(out, Node{Kind: NodeSubtext, Children: p.parseInline(text)})
 		case trimmed == "":
-			out = append(out, Node{Kind: NodeLineBreak})
+			// A blank line separates paragraphs, so it contributes the empty line
+			// Discord shows — except in front of a block, which already carries its
+			// own margin and would otherwise gain a stray blank line above it.
+			if i < len(lines)-1 && !isBlockStart(lines[i+1]) {
+				out = append(out, Node{Kind: NodeLineBreak})
+			}
 		default:
 			out = append(out, p.parseInline(line)...)
 			// Every line ends with a hard line break unless it is the last one or

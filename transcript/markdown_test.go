@@ -185,6 +185,12 @@ func TestParseBlocks(t *testing.T) {
 		{"blank line", "a\n\nb", "text(a)brbrtext(b)"},
 		{"leading and trailing blank lines", "\n\na\n\n", "text(a)"},
 		{"block then inline", "```\ncode\n```\nafter", "codeblock(:code)text(after)"},
+		// A blank line in front of a block is the paragraph break, and the block
+		// brings its own margin: only the line break that ends the paragraph stays.
+		{"blank line before a heading", "a\n\n# H", "text(a)brh1[text(H)]"},
+		{"blank line before a list", "a\n\n- b", "text(a)brul[li[text(b)]]"},
+		{"blank line before a quote", "a\n\n> b", "text(a)brquote[text(b)]"},
+		{"blank line before a code block", "a\n\n```\nx\n```", "text(a)brcodeblock(:x)"},
 	}
 
 	for _, tc := range tests {

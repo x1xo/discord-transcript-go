@@ -2,6 +2,7 @@ package transcript
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -25,17 +26,19 @@ func TestGenerateExamples(t *testing.T) {
 
 	variants := []struct {
 		file    string
+		build   func(*testing.T) *Transcript
 		options []Option
 	}{
-		{"transcript.html", nil},
-		{"transcript-interactive.html", []Option{WithAssets(AssetsWithScript())}},
-		{"transcript-short.html", []Option{WithShortTags()}},
+		{"transcript.html", exampleTranscript, nil},
+		{"transcript-interactive.html", exampleTranscript, []Option{WithAssets(AssetsWithScript())}},
+		{"transcript-short.html", exampleTranscript, []Option{WithShortTags()}},
+		{"transcript-embeds.html", exampleEmbedTranscript, nil},
 	}
 
 	for _, variant := range variants {
 		options := append([]Option{WithMedia(URLMedia())}, variant.options...)
 		path := filepath.Join("..", "examples", variant.file)
-		if err := exampleTranscript(t).WriteFile(path, options...); err != nil {
+		if err := variant.build(t).WriteFile(path, options...); err != nil {
 			t.Fatalf("write %s: %v", path, err)
 		}
 		t.Logf("wrote %s", path)
@@ -125,4 +128,81 @@ func exampleTranscript(t *testing.T) *Transcript {
 			},
 		},
 	}
+}
+
+// exampleEmbedTranscript is the same conversation with the embeds a ticket bot
+// sends: text that arrives as a document of its own. A description here carries
+// headings, lists, a quote, a fenced block and subtext, and fields carry markup
+// too, including a fenced block whose body must survive. Every one of those used
+// to be flattened away, which is what examples/transcript-embeds.html is for.
+func exampleEmbedTranscript(t *testing.T) *Transcript {
+	t.Helper()
+	tr := exampleTranscript(t)
+	tr.Title = "general — ticket embeds"
+
+	parse := func(content string) []Node {
+		return ParseContentWith(content, Resolvers{
+			Users: Profiles{"100000000000000002": {Key: "100000000000000002", Name: "ravik"}},
+		})
+	}
+	at := func(hour, minute int) time.Time {
+		return time.Date(2024, 3, 15, hour, minute, 0, 0, time.UTC)
+	}
+	ticketBot := Author{Key: "100000000000000003", Name: "ticket bot", AvatarURL: examplePNG, Bot: true, Verified: true}
+
+	ticket := strings.Join([]string{
+		"# 🎫 Test",
+		"Thank you for contacting support.",
+		"Please describe your issue and wait for a response.",
+		"",
+		"## What happens next",
+		"- the ticket is open",
+		"- a moderator will reply soon",
+		"1. attach the transcript",
+		"2. describe what you saw",
+		"",
+		"> Everything below the heading is markdown the parser has to keep.",
+		"",
+		"`transcript --debug`, ||hidden note||, **bold**, *italic*, ~~strike~~, a link https://example.com/docs and a ping to <@100000000000000002>.",
+		"",
+		"```go",
+		"tr := adapter.Transcript(channel, messages)",
+		"```",
+		"-# opened by the ticket bot",
+	}, "\n")
+
+	tr.Messages = append(tr.Messages,
+		Message{
+			Author:    ticketBot,
+			Timestamp: at(14, 33),
+			Embeds: []Embed{{
+				Color:       "#eb459e",
+				Title:       "Your ticket",
+				URL:         "https://example.com/tickets/332",
+				Author:      &EmbedAuthor{Name: "ticket bot", Icon: &Media{URL: examplePNG, Kind: MediaImage}},
+				Description: parse(ticket),
+				Footer: &EmbedFooter{
+					Text:      "ticket 332",
+					Icon:      &Media{URL: examplePNG, Kind: MediaImage},
+					Timestamp: at(14, 33),
+				},
+			}},
+		},
+		Message{
+			Author:    ticketBot,
+			Timestamp: at(14, 34),
+			Embeds: []Embed{{
+				Color: "#57f287",
+				Title: "Diagnostics",
+				Fields: []EmbedField{
+					{Name: "Status", Value: parse("**Open**"), Inline: true},
+					{Name: "Priority", Value: parse("*High*"), Inline: true},
+					{Name: "Steps", Value: parse("1. run the exporter\n2. paste the output here")},
+					{Name: "Last error", Value: parse("```\npanic: assignment to entry in nil map\ngoroutine 1 [running]\n```")},
+				},
+				Footer: &EmbedFooter{Text: "every field above is markdown"},
+			}},
+		},
+	)
+	return tr
 }
