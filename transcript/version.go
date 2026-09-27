@@ -6,4 +6,4 @@ package transcript
 // new discord-transcript-ui release, and a UI release does not need a new module.
 // ContractVersion, generated from the UI build, is the markup contract this
 // module emits.
-const Version = "1.2.1"
+const Version = "1.3.0"

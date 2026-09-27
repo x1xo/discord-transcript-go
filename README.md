@@ -113,6 +113,9 @@ release is not on npm yet (or you would rather not depend on jsDelivr), pass you
 own URL and hash with `WithCSS` — the markup contract is unchanged between minor
 releases.
 
+This module versions on its own; `CHANGELOG.md` records what each release emits,
+and `transcript.Version` is what a download reports in its `User-Agent`.
+
 ## Compact tag names (opt-in)
 
 The default markup uses readable names (`<discord-message>`, `<discord-mention>`).
