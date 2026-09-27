@@ -36,7 +36,7 @@ func sampleTranscript(t *testing.T) *Transcript {
 	miona := Author{Key: "555555555555555555", Name: "miona", AvatarURL: "https://cdn.discordapp.com/avatars/555/def.png", RoleColor: "#eb459e", Bot: true, Verified: true}
 
 	return &Transcript{
-		Channel: Channel{Name: "general", Type: ChannelText, Guild: "Test Guild"},
+		Channel: Channel{Name: "general", Type: ChannelText, Guild: "Test Guild", GuildIcon: "https://cdn.discordapp.com/icons/900/abc.png"},
 		Messages: []Message{
 			{
 				Author:    piton,
@@ -655,5 +655,85 @@ func TestEmbedDescriptionKeepsItsBlocks(t *testing.T) {
 		if !strings.Contains(string(doc), want) {
 			t.Errorf("missing %s in the rendered embed:\n%s", want, doc)
 		}
+	}
+}
+
+// renderChannel renders one message with the given channel header, so the guild
+// header can be inspected on its own.
+func renderChannel(t *testing.T, channel Channel) string {
+	t.Helper()
+	tr := &Transcript{
+		Channel: channel,
+		Messages: []Message{{
+			Author:    Author{Key: "1", Name: "piton"},
+			Timestamp: mustTime(t, "2024-03-15T14:28:00Z"),
+			Content:   []Node{Text("hello")},
+		}},
+	}
+	doc, err := tr.HTML(WithMedia(URLMedia()))
+	if err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	return string(doc)
+}
+
+func TestGuildHeader(t *testing.T) {
+	withIcon := renderChannel(t, Channel{
+		Name: "general", Type: ChannelText,
+		Guild: "Test Guild", GuildIcon: "https://cdn.discordapp.com/icons/900/abc.png",
+	})
+	for _, want := range []string{
+		`<discord-guild-header data-dt-r>`,
+		`<span class="dt-guild-icon"><img src="https://cdn.discordapp.com/icons/900/abc.png?size=64"`,
+		`<span class="dt-guild-name">Test Guild</span>`,
+		`<span class="dt-guild-channel">#general</span>`,
+	} {
+		if !strings.Contains(withIcon, want) {
+			t.Errorf("missing %s in:\n%s", want, withIcon)
+		}
+	}
+	// The channel name stays on the container too: that is the stylesheet's own
+	// fallback header, for documents with no guild to show.
+	if !strings.Contains(withIcon, `channel-name="general"`) {
+		t.Errorf("the channel name should stay on discord-messages:\n%s", withIcon)
+	}
+
+	// A guild with no icon keeps the header's shape with a coloured initial.
+	initials := renderChannel(t, Channel{Name: "general", Type: ChannelText, Guild: "Test Guild"})
+	if !strings.Contains(initials, `class="dt-guild-icon dt-guild-icon--initials"`) {
+		t.Errorf("a guild without an icon should fall back to an initial:\n%s", initials)
+	}
+
+	// A channel with no type is named without a prefix.
+	noType := renderChannel(t, Channel{Name: "general", Guild: "Test Guild"})
+	if !strings.Contains(noType, `<span class="dt-guild-channel">general</span>`) {
+		t.Errorf("a typeless channel should have no prefix:\n%s", noType)
+	}
+
+	// No guild at all: no header, so the channel-name fallback is the only thing
+	// naming the channel.
+	plain := renderChannel(t, Channel{Name: "general", Type: ChannelText})
+	if strings.Contains(plain, "discord-guild-header") {
+		t.Errorf("a channel with no guild should not emit a header:\n%s", plain)
+	}
+}
+
+func TestGuildIconIsPooledLikeAnAvatar(t *testing.T) {
+	// Under the inline default the icon becomes a data URI, and a repeated one is
+	// hoisted like any avatar. It must still fill its box, because the pooled
+	// element carries the size of the role it was written with.
+	tr := &Transcript{
+		Channel: Channel{Name: "general", Type: ChannelText, Guild: "Test Guild", GuildIcon: examplePNG},
+		Messages: []Message{
+			{Author: Author{Key: "1", Name: "piton", AvatarURL: examplePNG}, Timestamp: mustTime(t, "2024-03-15T14:28:00Z"), Content: []Node{Text("one")}},
+			{Author: Author{Key: "1", Name: "piton", AvatarURL: examplePNG}, Timestamp: mustTime(t, "2024-03-15T14:29:00Z"), Content: []Node{Text("two")}},
+		},
+	}
+	doc, err := tr.HTML(WithMedia(InlineMedia()))
+	if err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	if html := string(doc); !strings.Contains(html, `<span class="dt-guild-icon"><span class="dt-media dt-media-`) {
+		t.Errorf("a repeated guild icon should be pooled inside its box:\n%s", html)
 	}
 }

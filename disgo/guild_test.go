@@ -97,6 +97,33 @@ func TestGuildIDOptionCoversAChannelThatDoesNotCarryOne(t *testing.T) {
 	}
 }
 
+func TestChannelTakesTheGuildHeaderFromTheCache(t *testing.T) {
+	caches := cache.New(cache.WithCaches(cache.FlagChannels, cache.FlagGuilds))
+	caches.AddChannel(guildChannel(t, guildID, chanID, "ticket-0001").(discord.GuildChannel))
+	caches.AddGuild(discord.Guild{ID: guildID, Name: "Test Guild", Icon: ptr("abc123")})
+
+	got := New(WithCaches(caches)).Channel(interactionChannel(t, chanID, "ticket-0001"))
+	if got.Guild != "Test Guild" {
+		t.Errorf("guild name = %q", got.Guild)
+	}
+	if !strings.Contains(got.GuildIcon, "/icons/"+guildID.String()+"/") || !strings.HasSuffix(got.GuildIcon, ".png") {
+		t.Errorf("guild icon = %q", got.GuildIcon)
+	}
+
+	// An uncached channel has no guild of its own, so the option is the only
+	// thing that can name it — and the header still comes out.
+	got = New(WithCaches(caches), WithGuildID(guildID)).
+		Channel(interactionChannel(t, snowflake.ID(555555555555555555), "unknown"))
+	if got.Guild != "Test Guild" || got.GuildIcon == "" {
+		t.Errorf("WithGuildID should still name the server, got %q / %q", got.Guild, got.GuildIcon)
+	}
+
+	// No caches: no guild to name, and no panic.
+	if got := New().Channel(interactionChannel(t, chanID, "ticket-0001")); got.Guild != "" || got.GuildIcon != "" {
+		t.Errorf("expected no guild data, got %q / %q", got.Guild, got.GuildIcon)
+	}
+}
+
 func TestRolesOverrideColoursTheAuthorName(t *testing.T) {
 	// A member is present (an offline export carries one) but there is no cache
 	// and no live guild. The override map is the only source of role data, and it

@@ -66,7 +66,7 @@ func exampleTranscript(t *testing.T) *Transcript {
 	}
 
 	return &Transcript{
-		Channel: Channel{Name: "general", Type: ChannelText, Guild: "Test Server"},
+		Channel: Channel{Name: "general", Type: ChannelText, Guild: "Test Server", GuildIcon: examplePNG},
 		Title:   "general — 2024-03-15",
 		Messages: []Message{
 			{

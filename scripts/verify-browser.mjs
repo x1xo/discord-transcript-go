@@ -195,14 +195,35 @@ const result = await send('Runtime.evaluate', {
 			check('link button anchor adds no underline', linkButton ? style(linkButton, 'text-decoration-line') : '', 'none');
 		}
 
-		// Headers: markdown headings render, and the channel header comes from the
-		// channel-name attribute via the stylesheet.
+		// Headers: markdown headings render, and the channel is named either by
+		// the stylesheet's own channel-name fallback or, when the document has
+		// one, by the guild header above the conversation.
 		const headings = all(T('header','dh'));
 		check('markdown headings rendered', headings.length > 0, true);
 		check('heading levels set', headings.every((h) => h.getAttribute('level')), true);
 		check('level 1 heading is larger', parseFloat(getComputedStyle(headings[0]).fontSize) > 16, true);
-		const channelHeader = getComputedStyle(document.querySelector(T('messages','dms')), '::before').content;
-		check('channel header rendered', channelHeader.includes('general'), true);
+		const messagesNode = document.querySelector(T('messages','dms'));
+		const fallbackHeader = getComputedStyle(messagesNode, '::before').content;
+		const guildHeader = document.querySelector(T('guild-header', 'dgh'));
+		if (guildHeader) {
+			// The guild header draws the server above the channel, and the
+			// fallback steps aside so the channel is named exactly once.
+			check('channel fallback stands down behind a guild header', fallbackHeader, 'none');
+			check('guild name rendered', guildHeader.querySelector('.dt-guild-name').textContent, 'Test Server');
+			check('channel named under the guild', guildHeader.querySelector('.dt-guild-channel').textContent, '#general');
+			const guildIcon = guildHeader.querySelector('.dt-guild-icon');
+			check('guild icon rendered', guildIcon !== null, true);
+			if (guildIcon) {
+				const iconBox = guildIcon.getBoundingClientRect();
+				const nameBox = guildHeader.querySelector('.dt-guild-name').getBoundingClientRect();
+				const channelBox = guildHeader.querySelector('.dt-guild-channel').getBoundingClientRect();
+				check('guild icon is 48px', Math.round(iconBox.width), 48);
+				check('guild icon sits left of the guild name', iconBox.right <= nameBox.left, true);
+				check('guild name sits above the channel', nameBox.bottom <= channelBox.top + 1, true);
+			}
+		} else {
+			check('channel header rendered', fallbackHeader.includes('general'), true);
+		}
 
 		// Embeds: the accent colour must reach the border, the footer must sit below
 		// the thumbnail rather than beside it, and a description must keep its line

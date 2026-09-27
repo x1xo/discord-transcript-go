@@ -4,6 +4,21 @@ Versions here belong to the Go module and move on their own. The markup contract
 the renderer emits is `transcript.ContractVersion`, generated from the
 `discord-transcript-ui` build, and it is listed per release below.
 
+## 1.7.0
+
+Contract: `discord-transcript-ui` **1.1.5** (was 1.1.4).
+
+* **The guild header.** The document now opens with the server the conversation
+  happened in: its icon, its name, and the channel under it. `Channel.GuildIcon`
+  is new (`Channel.Guild` already carried the name); both go through the media
+  pipeline, so a linked build keeps the CDN URL and an inlined one is sized and
+  pooled like any other icon. A guild with no icon keeps its place with a coloured
+  initial, and a transcript with no guild is unchanged — the stylesheet still names
+  the channel from `channel-name` on its own.
+* `disgo.Adapter.Channel` fills the name and the icon from the guild cache, so a
+  transcript grows the header with no caller change once the guild is known (which
+  1.6.0 made reliable).
+
 ## 1.6.0
 
 Contract: `discord-transcript-ui` 1.1.4 (unchanged).

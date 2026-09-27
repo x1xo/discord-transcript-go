@@ -25,8 +25,12 @@ type Channel struct {
 	Name string
 	// Type chooses the icon/prefix on that header.
 	Type ChannelType
-	// Guild is optional context for the page metadata.
+	// Guild is the server's name. It is drawn in the guild header above the
+	// channel, and repeated in the page metadata.
 	Guild string
+	// GuildIcon is the server icon URL, drawn beside the guild name. When it is
+	// empty but Guild is set, the header falls back to a coloured initial.
+	GuildIcon string
 	// ID is the channel snowflake, when known.
 	ID string
 	// GuildID is the snowflake of the guild the channel lives in. The renderer

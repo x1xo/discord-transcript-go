@@ -181,7 +181,37 @@ func (a *Adapter) Channel(ch discord.Channel) transcript.Channel {
 			}
 		}
 	}
+	a.fillGuild(&out)
 	return out
+}
+
+// fillGuild names the server and finds its icon, which is what the guild header
+// at the top of the document draws. Both come from the guild cache, so a
+// transcript that never learned its guild simply has no header.
+func (a *Adapter) fillGuild(out *transcript.Channel) {
+	id := out.GuildID
+	if id == "" {
+		id = guildIDString(a.opts.GuildID)
+	}
+	if id == "" || a.opts.Caches == nil {
+		return
+	}
+	guildID, err := snowflake.Parse(id)
+	if err != nil {
+		return
+	}
+	guild, ok := a.opts.Caches.Guild(guildID)
+	if !ok {
+		return
+	}
+	if out.Guild == "" {
+		out.Guild = guild.Name
+	}
+	if out.GuildIcon == "" {
+		if icon := guild.IconURL(); icon != nil {
+			out.GuildIcon = *icon
+		}
+	}
 }
 
 // guildIDString renders a guild snowflake, or "" when there is none, so a

@@ -327,6 +327,10 @@ action rows of buttons (all five styles, labels, unicode and custom emoji,
 (`MessageType` → join/leave/call/boost/edit/pin/thread), and continuation grouping
 computed at render time.
 
+Above the conversation, `Channel.Guild` and `Channel.GuildIcon` draw the server:
+icon on the left, guild name with the channel under it. Leave both empty and the
+stylesheet names the channel on its own, exactly as before.
+
 An embed description and every field value are parsed as markdown documents, not
 as one line of text: headings, lists, quotes, fenced blocks and subtext inside an
 embed reach the markup as the elements they are. `examples/transcript-embeds.html`

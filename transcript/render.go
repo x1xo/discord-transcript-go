@@ -44,10 +44,54 @@ func (r *renderer) writeMessages(t *Transcript) {
 		r.attr("channel-type", string(channel.Type))
 	}
 	r.b.WriteString(">")
+	r.writeGuildHeader(channel)
 	for i, m := range t.Messages {
 		r.writeMessage(m, groups[i])
 	}
 	r.b.WriteString("</discord-messages>")
+}
+
+// writeGuildHeader draws the server above the conversation: its icon, its name,
+// and the channel under it. It is skipped entirely when there is no guild to
+// show, in which case the stylesheet still names the channel from
+// channel-name — that is why the channel is named in two places.
+func (r *renderer) writeGuildHeader(c Channel) {
+	if c.Guild == "" && c.GuildIcon == "" {
+		return
+	}
+	r.b.WriteString(`<discord-guild-header data-dt-r>`)
+	switch {
+	case c.GuildIcon != "":
+		r.b.WriteString(`<span class="dt-guild-icon">`)
+		r.writeIcon(MediaRef{URL: c.GuildIcon, Kind: MediaImage, Filename: "guild-icon"}, "avatar")
+		r.b.WriteString(`</span>`)
+	case c.Guild != "":
+		r.b.WriteString(`<span class="dt-guild-icon dt-guild-icon--initials" style="background-color:` +
+			initialsColor(c.Guild) + `">` + escapeText(initial(c.Guild)) + `</span>`)
+	}
+	if c.Guild != "" || c.Name != "" {
+		r.b.WriteString(`<span class="dt-guild-meta">`)
+		if c.Guild != "" {
+			r.b.WriteString(`<span class="dt-guild-name">` + escapeText(c.Guild) + `</span>`)
+		}
+		if c.Name != "" {
+			r.b.WriteString(`<span class="dt-guild-channel">` +
+				escapeText(channelPrefix(c.Type)+c.Name) + `</span>`)
+		}
+		r.b.WriteString(`</span>`)
+	}
+	r.b.WriteString(`</discord-guild-header>`)
+}
+
+// channelPrefix is what Discord puts in front of a channel name, and what the
+// stylesheet's own channel-name fallback uses.
+func channelPrefix(t ChannelType) string {
+	switch t {
+	case ChannelText, ChannelVoice, ChannelThread, ChannelForum, ChannelLocked:
+		return "#"
+	default:
+		return ""
+	}
 }
 
 func (r *renderer) writeMessage(m Message, g grouping) {

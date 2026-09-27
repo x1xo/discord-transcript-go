@@ -21,6 +21,7 @@ var shortTagNames = map[string]string{
 	"embed-fields":        "defs",
 	"embed-footer":        "defo",
 	"file-attachment":     "dfil",
+	"guild-header":        "dgh",
 	"header":              "dh",
 	"image-attachment":    "dimg",
 	"italic":              "di",
