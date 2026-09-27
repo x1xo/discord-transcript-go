@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -26,6 +27,23 @@ type MediaRef struct {
 	ContentType string
 	// Alt is the alt text the producer has for the media, when any.
 	Alt string
+	// TargetEdge is the longest edge, in device pixels, that this media is drawn
+	// at — twice the CSS size — or 0 when it is content the reader may zoom into.
+	//
+	// A store may use it to ask the origin for a smaller copy and to downscale
+	// what it downloads; InlineMedia and DirMedia both do. It is a hint, never a
+	// requirement: a store that ignores it is still correct, just bigger.
+	TargetEdge int
+}
+
+// cacheKey identifies a media request. The target edge is part of it, so the
+// same avatar keeps one blob for every place it is drawn at the same size, and
+// two sizes of the same image stay two blobs rather than one blurry one.
+func (r MediaRef) cacheKey() string {
+	if r.TargetEdge <= 0 {
+		return r.URL
+	}
+	return r.URL + "|" + strconv.Itoa(r.TargetEdge)
 }
 
 // MediaStore turns a media reference into the URL that ends up in the document.
@@ -216,17 +234,24 @@ func (s *InlineMediaStore) Store(ctx context.Context, ref MediaRef) (string, err
 	if ref.URL == "" {
 		return "", nil
 	}
-	// Already inline or local: nothing to do.
-	if strings.HasPrefix(ref.URL, "data:") || !isRemote(ref.URL) {
-		return ref.URL, nil
-	}
+	key := ref.cacheKey()
 
 	s.mu.Lock()
-	if cached, ok := s.cache[ref.URL]; ok {
+	if cached, ok := s.cache[key]; ok {
 		s.mu.Unlock()
 		return cached, nil
 	}
 	s.mu.Unlock()
+
+	// Already inline: there is nothing to download, but an oversized blob still
+	// gets right-sized, which is what a producer that pre-inlines its media needs.
+	if strings.HasPrefix(ref.URL, "data:") {
+		return s.remember(key, shrinkDataURI(ref.URL, ref.TargetEdge)), nil
+	}
+	// Anything local (a relative path, a file URL): nothing to do.
+	if !isRemote(ref.URL) {
+		return ref.URL, nil
+	}
 
 	fetcher := s.Fetcher
 	if fetcher == nil {
@@ -239,19 +264,38 @@ func (s *InlineMediaStore) Store(ctx context.Context, ref MediaRef) (string, err
 	if max <= 0 {
 		max = DefaultMaxMediaBytes
 	}
-	data, contentType, err := fetcher.Fetch(ctx, ref, max)
+	// Ask the origin for a smaller copy first; downscale whatever still arrives
+	// too large. Both are no-ops when the renderer asked for no target edge.
+	fetchRef := ref
+	fetchRef.URL = discordSizedURL(ref.URL, ref.TargetEdge)
+	data, contentType, err := fetcher.Fetch(ctx, fetchRef, max)
 	if err != nil {
 		return ref.URL, err
 	}
+	data, contentType = ShrinkImage(data, normalizedContentType(data, contentType), ref.TargetEdge)
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
 	dataURI := "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data)
 
+	return s.remember(key, dataURI), nil
+}
+
+// remember caches a resolved URL under its request key.
+func (s *InlineMediaStore) remember(key, value string) string {
 	s.mu.Lock()
-	s.cache[ref.URL] = dataURI
+	s.cache[key] = value
 	s.mu.Unlock()
-	return dataURI, nil
+	return value
+}
+
+// normalizedContentType prefers the bytes over the header: a CDN that serves
+// image/jpeg for a PNG would otherwise send the downscaler down the wrong path.
+func normalizedContentType(data []byte, contentType string) string {
+	if contentType == "" || contentType == "application/octet-stream" {
+		return http.DetectContentType(data)
+	}
+	return contentType
 }
 
 // DirMedia writes media into a directory and returns relative paths, for
@@ -287,7 +331,7 @@ func (s *DirMediaStore) Store(ctx context.Context, ref MediaRef) (string, error)
 		return ref.URL, nil
 	}
 	s.mu.Lock()
-	if cached, ok := s.seen[ref.URL]; ok {
+	if cached, ok := s.seen[ref.cacheKey()]; ok {
 		s.mu.Unlock()
 		return cached, nil
 	}
@@ -304,10 +348,14 @@ func (s *DirMediaStore) Store(ctx context.Context, ref MediaRef) (string, error)
 	if max <= 0 {
 		max = DefaultMaxMediaBytes
 	}
-	data, contentType, err := fetcher.Fetch(ctx, ref, max)
+	fetchRef := ref
+	fetchRef.URL = discordSizedURL(ref.URL, ref.TargetEdge)
+	data, contentType, err := fetcher.Fetch(ctx, fetchRef, max)
 	if err != nil {
 		return ref.URL, err
 	}
+	contentType = normalizedContentType(data, contentType)
+	data, contentType = ShrinkImage(data, contentType, ref.TargetEdge)
 
 	name := mediaFilename(ref, contentType)
 	write := s.WriteFile
@@ -320,7 +368,7 @@ func (s *DirMediaStore) Store(ctx context.Context, ref MediaRef) (string, error)
 	href := s.Base + name
 
 	s.mu.Lock()
-	s.seen[ref.URL] = href
+	s.seen[ref.cacheKey()] = href
 	s.mu.Unlock()
 	return href, nil
 }

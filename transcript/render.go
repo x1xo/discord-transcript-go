@@ -167,8 +167,9 @@ func (r *renderer) writeAvatar(a Author, g grouping) {
 			initialsColor(a.Name) + `">` + escapeText(initial(a.Name)) + `</span>`)
 		return
 	}
-	src := r.resolve(MediaRef{URL: a.AvatarURL, Kind: MediaAvatar, Filename: a.Key})
-	r.b.WriteString(`<span class="dt-avatar"><img src="` + escapeText(src) + `" alt="" decoding="async"></span>`)
+	r.b.WriteString(`<span class="dt-avatar">`)
+	r.writeIcon(MediaRef{URL: a.AvatarURL, Kind: MediaAvatar, Filename: a.Key}, "avatar")
+	r.b.WriteString(`</span>`)
 }
 
 func (r *renderer) writeReply(reply Reply) {
@@ -184,8 +185,9 @@ func (r *renderer) writeReply(reply Reply) {
 	r.flag("data-dt-ready")
 	r.b.WriteString(">")
 	if reply.Author.AvatarURL != "" {
-		src := r.resolve(MediaRef{URL: reply.Author.AvatarURL, Kind: MediaAvatar, Filename: reply.Author.Key})
-		r.b.WriteString(`<span class="dt-reply-avatar"><img src="` + escapeText(src) + `" alt="" decoding="async"></span>`)
+		r.b.WriteString(`<span class="dt-reply-avatar">`)
+		r.writeIcon(MediaRef{URL: reply.Author.AvatarURL, Kind: MediaAvatar, Filename: reply.Author.Key}, "avatar")
+		r.b.WriteString(`</span>`)
 	}
 	name := reply.Author.Name
 	if reply.Mentions {
@@ -213,7 +215,7 @@ func (r *renderer) writeEmbed(e Embed) {
 	if e.Author != nil {
 		r.b.WriteString(`<span class="dt-embed-author">`)
 		if e.Author.Icon != nil {
-			r.writeMediaImg(*e.Author.Icon, "")
+			r.writeIcon(MediaRef{URL: e.Author.Icon.URL, Kind: e.Author.Icon.Kind, Alt: e.Author.Icon.Alt}, "author-icon")
 		}
 		name := escapeText(e.Author.Name)
 		if href := sanitizeURL(e.Author.URL); href != "" {
@@ -265,14 +267,14 @@ func (r *renderer) writeEmbed(e Embed) {
 	}
 	if e.Thumbnail != nil {
 		r.b.WriteString(`<div class="dt-embed-thumbnail">`)
-		r.writeMediaImg(*e.Thumbnail, "")
+		r.writeIcon(MediaRef{URL: e.Thumbnail.URL, Kind: e.Thumbnail.Kind, Alt: e.Thumbnail.Alt}, "thumbnail")
 		r.b.WriteString(`</div>`)
 	}
 	if e.Footer != nil {
 		r.b.WriteString(`<discord-embed-footer>`)
 		if e.Footer.Icon != nil {
 			r.b.WriteString(`<span class="dt-embed-footer-icon">`)
-			r.writeMediaImg(*e.Footer.Icon, "")
+			r.writeIcon(MediaRef{URL: e.Footer.Icon.URL, Kind: e.Footer.Icon.Kind, Alt: e.Footer.Icon.Alt}, "footer-icon")
 			r.b.WriteString(`</span>`)
 		}
 		if e.Footer.Text != "" {
@@ -366,7 +368,7 @@ func (r *renderer) writeReactions(list []Reaction) {
 		case isRemote(emoji) || strings.HasPrefix(emoji, "data:"):
 			src := emoji
 			if isRemote(emoji) {
-				src = r.resolve(MediaRef{URL: emoji, Kind: MediaEmoji, Filename: reaction.Name})
+				src = r.resolve(MediaRef{URL: emoji, Kind: MediaEmoji, Filename: reaction.Name, TargetEdge: r.targetEdge("emoji")})
 			}
 			alt := reaction.Name
 			if alt == "" {
@@ -482,7 +484,7 @@ func (r *renderer) writeNode(n Node) {
 	case NodeEmoji:
 		// The image is emitted directly, so the emoji renders with the
 		// stylesheet alone and the script has nothing to build.
-		src := r.resolve(MediaRef{URL: n.EmojiURL, Kind: MediaEmoji, Filename: n.Text})
+		src := r.resolve(MediaRef{URL: n.EmojiURL, Kind: MediaEmoji, Filename: n.Text, TargetEdge: r.targetEdge("emoji")})
 		r.b.WriteString(`<discord-custom-emoji`)
 		r.attr("name", n.Text)
 		r.b.WriteString(">")
@@ -556,6 +558,37 @@ func (r *renderer) writeMediaImg(m Media, class string) {
 		r.b.WriteString(` class="` + class + `"`)
 	}
 	r.b.WriteString(` loading="lazy" decoding="async">`)
+}
+
+// writeIcon writes a decorative image — an avatar, an embed author or footer
+// icon, a thumbnail — at the size it is drawn, and marks it so the media pool
+// can hoist it when the same bytes appear again elsewhere in the document.
+//
+// The marker is only worth carrying for inline media: a shared URL is already
+// fetched once by the browser.
+func (r *renderer) writeIcon(ref MediaRef, role string) {
+	ref.TargetEdge = r.targetEdge(role)
+	src := r.resolve(ref)
+	if src == "" {
+		return
+	}
+	r.b.WriteString(`<img src="` + escapeText(src) + `" alt="` + escapeText(ref.Alt) + `" loading="lazy" decoding="async"`)
+	if r.o.MediaPool && strings.HasPrefix(src, "data:image/") {
+		r.attr("data-dt-media", role)
+	}
+	r.b.WriteString(">")
+}
+
+// targetEdge is the longest edge an image with this role is worth keeping, or 0
+// when the caller asked for the original bytes.
+func (r *renderer) targetEdge(role string) int {
+	if !r.o.MediaDownscale {
+		return 0
+	}
+	if role == "thumbnail" {
+		return edgeThumbnail
+	}
+	return edgeIcon
 }
 
 func (r *renderer) writeImage(a Attachment) {

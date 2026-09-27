@@ -29,7 +29,11 @@ func (t *Transcript) WriteTo(w io.Writer, opts ...Option) error {
 	if err != nil {
 		return err
 	}
-	_, err = io.WriteString(w, buildDocument(t, &o, fragment))
+	doc := buildDocument(t, &o, fragment)
+	if o.MediaPool {
+		doc = applyMediaPool(doc)
+	}
+	_, err = io.WriteString(w, doc)
 	return err
 }
 

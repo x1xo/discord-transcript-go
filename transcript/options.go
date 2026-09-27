@@ -33,6 +33,15 @@ type Options struct {
 	// Media resolves attachment, avatar and emoji URLs. Defaults to base64
 	// inlining so the document keeps working without the network.
 	Media MediaStore
+	// MediaDownscale right-sizes avatars, icons, emoji and thumbnails to the
+	// size they are actually drawn at, which is where most of a transcript's
+	// bytes go. It never makes an image larger: anything already small enough,
+	// animated, vector or undecodable keeps its original bytes.
+	MediaDownscale bool
+	// MediaPool stores each repeated inline image once, in a single <style>
+	// block, and points every use at it. Avatars repeat once per message, so
+	// this is usually the largest single saving after right-sizing.
+	MediaPool bool
 	// MaxMediaBytes caps a single download. Zero means DefaultMaxMediaBytes.
 	MaxMediaBytes int64
 	// Locale and TimeZone format timestamps. The generated text is absolute and
@@ -69,12 +78,14 @@ type Option func(*Options)
 
 func defaultOptions() Options {
 	return Options{
-		Theme:         ThemeDark,
-		Assets:        DefaultAssets(),
-		Media:         InlineMedia(),
-		MaxMediaBytes: DefaultMaxMediaBytes,
-		Locale:        "en-US",
-		TimeZone:      time.UTC,
+		Theme:          ThemeDark,
+		Assets:         DefaultAssets(),
+		Media:          InlineMedia(),
+		MediaDownscale: true,
+		MediaPool:      true,
+		MaxMediaBytes:  DefaultMaxMediaBytes,
+		Locale:         "en-US",
+		TimeZone:       time.UTC,
 	}
 }
 
@@ -181,6 +192,18 @@ func WithoutStylesheet() Option {
 
 // WithMedia sets the media store used for attachments, avatars and emoji.
 func WithMedia(store MediaStore) Option { return func(o *Options) { o.Media = store } }
+
+// WithMediaPool stores each repeated inline image once and points every use at
+// it. On by default; this exists to turn it back on after WithoutMediaPool.
+func WithMediaPool() Option { return func(o *Options) { o.MediaPool = true } }
+
+// WithoutMediaPool keeps every image inline where it is used, as an <img> with
+// its own data URI. Bigger, but the markup is plain images only.
+func WithoutMediaPool() Option { return func(o *Options) { o.MediaPool = false } }
+
+// WithoutMediaDownscale keeps the original bytes of avatars, icons and
+// thumbnails instead of right-sizing them to the size they are drawn at.
+func WithoutMediaDownscale() Option { return func(o *Options) { o.MediaDownscale = false } }
 
 // WithMaxMediaBytes caps a single media download.
 func WithMaxMediaBytes(n int64) Option { return func(o *Options) { o.MaxMediaBytes = n } }

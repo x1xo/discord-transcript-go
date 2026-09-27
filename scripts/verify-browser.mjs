@@ -262,14 +262,46 @@ const result = await send('Runtime.evaluate', {
 			check('small print is not body coloured', smallStyle.color !== getComputedStyle(document.querySelector('.dt-author')).color, true);
 		}
 
-		// Media: inlined images must decode, and no URI may appear as text.
+		// Media: inlined images must decode, no URI may appear as text, and a
+		// blob used more than once must be stored once. The last one is the whole
+		// point of the media pool: an avatar repeated in every message used to be
+		// copied in full every time.
 		const inlined = all('img[src^="data:image"]');
-		check('inlined images present', inlined.length > 0, true);
+		const pooled = all('.dt-media');
+		check('inlined images present', inlined.length + pooled.length > 0, true);
 		check('all inlined images decoded', inlined.every((img) => img.complete && img.naturalWidth > 0), true);
 		const leak = all('*')
 			.filter((el) => el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE')
 			.some((el) => el.children.length === 0 && (el.textContent || '').includes('data:image'));
 		check('no media URI leaked into text', leak, false);
+
+		const poolStyle = document.querySelector('style[data-dt-media-pool]');
+		const pooledBlobs = poolStyle
+			? poolStyle.textContent
+					.split('background-image:url("')
+					.slice(1)
+					.map((part) => part.slice(0, part.indexOf('"')))
+			: [];
+		// Each hoisted blob is stored once in the pool, and several uses share it.
+		// A content image that happens to be the same bytes keeps its own <img>,
+		// which is why this counts the pool and not the whole document.
+		check('pooled blobs are stored once each', new Set(pooledBlobs).size, pooledBlobs.length);
+		check('pooled media shares fewer blobs than uses', pooled.length > pooledBlobs.length, true);
+		if (pooled.length > 0) {
+			check(
+				'pooled media draws its image',
+				pooled.every((el) => getComputedStyle(el).backgroundImage.startsWith('url("data:image')),
+				true
+			);
+			check('pooled media crops like an image', getComputedStyle(pooled[0]).backgroundSize, 'cover');
+			const pooledAvatar = document.querySelector('.dt-avatar > .dt-media');
+			if (pooledAvatar) {
+				const box = pooledAvatar.getBoundingClientRect();
+				const parent = pooledAvatar.parentElement.getBoundingClientRect();
+				check('pooled avatar fills its box', Math.abs(box.width - parent.width) < 1 && Math.abs(box.height - parent.height) < 1, true);
+			}
+			check('pool marker never reaches the page', document.documentElement.outerHTML.includes(' data-dt-media="'), false);
+		}
 
 		// Without the script a spoiler is hidden but peekable on hover; with it,
 		// a click reveals it.

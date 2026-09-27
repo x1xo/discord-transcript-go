@@ -170,19 +170,71 @@ downloads each URL once and rewrites it to a `data:` URI:
 
 | Store | Result | Use when |
 | --- | --- | --- |
-| `transcript.InlineMedia()` *(default)* | base64 `data:` URIs inside the HTML | Archiving. One file, works forever, no network. Costs ~33% size overhead and is not shared between transcripts. |
+| `transcript.InlineMedia()` *(default)* | base64 `data:` URIs inside the HTML | Archiving. One file, works forever, no network. Costs ~33% size overhead; repeated images are stored once and right-sized (see below). |
 | `transcript.DirMedia(dir, base)` | files in a directory plus relative paths | Serving transcripts from your own host, or when size matters. |
 | `transcript.URLMedia()` | the original URLs | Quick previews; anything already re-hosted somewhere durable. |
 | your own `transcript.MediaStore` | whatever you want | Re-hosting to S3/R2, signing, caching, deduplication. |
 
 Custom downloaders work too: `transcript.InlineMediaWith(fetcher)` accepts any
-`transcript.Fetcher`. Downloads are capped by `-max-media-bytes` (8 MiB default)
-and a 30-second timeout, and **a failed download is never fatal** — the renderer
-keeps the original URL and reports it through `transcript.WithWarn`.
+`transcript.Fetcher`. Downloads are capped by `transcript.WithMaxMediaBytes`
+(8 MiB default) and a 30-second timeout, and **a failed download is never
+fatal** — the renderer keeps the original URL and reports it through
+`transcript.WithWarn`.
 
 Only group-start messages embed their avatar, so a repeated author costs its
 avatar bytes once. Authors with no usable avatar URL get a coloured initial
 instead of a network request.
+
+### Making the file smaller
+
+Avatars and icons are what make an inlined transcript big: Discord serves a
+128–1024px image for something drawn at 20–32 CSS pixels, and the same avatar
+would otherwise be copied into the file once per message. Both are handled for
+you, and neither needs a script or a newer stylesheet:
+
+* **Right-sizing.** Every media request carries the size it is drawn at
+  (`MediaRef.TargetEdge`, twice the CSS size), so a fixed-size Discord image is
+  requested at that size and anything else is downscaled in Go. It never grows a
+  file: an image that is already small enough, animated, vector, or in a format
+  the standard library cannot decode keeps its original bytes.
+* **One copy.** A blob that appears more than once — an avatar in twenty
+  messages, the same icon in an embed — is stored once in a
+  `<style data-dt-media-pool>` block and every use becomes
+  `<span class="dt-media dt-media-1">`. Rules and references live in the
+  document, so the file still renders with no script.
+
+```go
+tr.WriteFile("ticket.html")                                      // both, on by default
+tr.WriteFile("ticket.html", transcript.WithoutMediaPool())        // an <img> per use
+tr.WriteFile("ticket.html", transcript.WithoutMediaDownscale())   // original bytes
+```
+
+Measured on a four-message ticket with two avatars, an embed, an attachment and a
+repeated icon (synthetic 128px avatars, the default store):
+
+| | on disk | gzipped |
+| --- | --- | --- |
+| before | 328.6 KB | 247.3 KB |
+| pooled only | 183.3 KB | 136.9 KB |
+| right-sized only | 135.7 KB | 81.6 KB |
+| both (default) | **101.6 KB** | **75.0 KB** |
+
+gzip does not rescue repetition on its own: a base64 avatar is larger than gzip's
+32 KB window, so the second copy only partly matches. One-off images — an
+attachment, an embed image — stay real `<img>` elements with their own bytes, so
+`alt` text and printing keep working.
+
+Two caveats before wiring this into a pipeline:
+
+* A custom `transcript.MediaStore` replaces the built-in stores, so it has to
+  right-size for itself: call
+  `transcript.ShrinkImage(data, contentType, ref.TargetEdge)`, which returns the
+  bytes and the content type that goes with them.
+* Pooled media is a background image rather than an `<img>`. Nothing in the
+  stylesheet or the script needs to know that, but a strict
+  Content-Security-Policy has to allow the inline `<style>`
+  (`style-src 'unsafe-inline'`, or a nonce) and `img-src data:`.
+  `WithoutMediaPool()` gives you plain `<img>` elements back.
 
 ### Routing downloads through your own proxy
 
