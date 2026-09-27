@@ -52,8 +52,9 @@ func (a *Adapter) resolversFor(m discord.Message, shared *transcriptIndex) *mess
 	return r
 }
 
-// memberFor finds a guild member for an author: the message's own data, then the
-// export, then disgo's cache.
+// memberFor finds a guild member for an identity: the message's own data, then
+// the export, then disgo's cache. It never asks the network, so it is what a
+// mention uses — a message can name hundreds of users.
 func (r *messageResolvers) memberFor(id snowflake.ID) (discord.Member, bool) {
 	if member, ok := r.local.members[id]; ok {
 		return member, true
@@ -64,6 +65,19 @@ func (r *messageResolvers) memberFor(id snowflake.ID) (discord.Member, bool) {
 		}
 	}
 	return r.cacheMember(id)
+}
+
+// authorMemberFor is memberFor for a message author, which is a bounded set. It
+// adds the configured fetcher as a last resort, so an author who was never
+// cached still gets a nickname, a guild avatar and a role colour.
+func (r *messageResolvers) authorMemberFor(id snowflake.ID) (discord.Member, bool) {
+	if member, ok := r.memberFor(id); ok {
+		return member, true
+	}
+	if r.shared == nil {
+		return discord.Member{}, false
+	}
+	return r.shared.fetchMember(id, r.guildID, r.base.opts.MemberFetcher)
 }
 
 // cacheMember finds a guild member in disgo's cache, the last resort.

@@ -46,7 +46,20 @@ type Options struct {
 	SelfUserID snowflake.ID
 	// SkipReplies renders messages without their "replying to" preview.
 	SkipReplies bool
+	// MemberFetcher supplies a guild member the caches do not hold. disgo fills
+	// the member cache from GUILD_CREATE and from member, voice and chunk
+	// events, so in a large guild most authors are simply absent — and without
+	// a member there is no nickname, no guild avatar and no role colour. Point
+	// it at Rest.GetMember and each unknown author is looked up once.
+	MemberFetcher MemberFetcher
 }
+
+// MemberFetcher looks a guild member up outside the caches. Returning false
+// leaves the author with the identity the message itself carries.
+//
+// It is called at most once per distinct author per transcript, and only for
+// message authors — never for a mention, which would be unbounded.
+type MemberFetcher func(guildID, userID snowflake.ID) (discord.Member, bool)
 
 // Option mutates Options.
 type Option func(*Options)
@@ -73,6 +86,24 @@ func WithGuildID(id snowflake.ID) Option { return func(o *Options) { o.GuildID =
 
 // WithSelfUserID marks messages mentioning this user as highlighted.
 func WithSelfUserID(id snowflake.ID) Option { return func(o *Options) { o.SelfUserID = id } }
+
+// WithMemberFetcher installs a fallback for authors the caches do not hold, so
+// a transcript from a large guild still draws nicknames and role colours.
+//
+//	adapter := disgo.New(
+//		disgo.WithCaches(client.Caches),
+//		disgo.WithGuildID(guildID),
+//		disgo.WithMemberFetcher(func(guildID, userID snowflake.ID) (discord.Member, bool) {
+//			member, err := client.Rest.GetMember(guildID, userID)
+//			if err != nil || member == nil {
+//				return discord.Member{}, false
+//			}
+//			return *member, true
+//		}),
+//	)
+func WithMemberFetcher(fetch MemberFetcher) Option {
+	return func(o *Options) { o.MemberFetcher = fetch }
+}
 
 // WithoutReplies drops the reply previews.
 func WithoutReplies() Option { return func(o *Options) { o.SkipReplies = true } }
@@ -132,17 +163,34 @@ func (a *Adapter) Channel(ch discord.Channel) transcript.Channel {
 	if named, ok := ch.(interface{ Name() string }); ok {
 		out.Name = named.Name()
 	}
+	// A guild channel names its guild directly.
 	if guild, ok := ch.(discord.GuildChannel); ok {
-		// The guild travels with the channel so a cache-only adapter can resolve
-		// identity for messages that do not mention their guild at all.
-		out.GuildID = guild.GuildID().String()
+		out.GuildID = guildIDString(guild.GuildID())
+	}
+	// An interaction hands over a partial channel: it satisfies discord.Channel
+	// but not discord.GuildChannel, so it names no guild — and an interaction is
+	// exactly how a ticket transcript is usually triggered. The cache holds the
+	// whole channel, so that is where the guild, and a missing name, come from.
+	if a.opts.Caches != nil {
 		if cached, ok := a.opts.Caches.Channel(ch.ID()); ok {
-			if named, ok := cached.(interface{ Name() string }); ok && out.Name == "" {
-				out.Name = named.Name()
+			if out.GuildID == "" {
+				out.GuildID = guildIDString(cached.GuildID())
+			}
+			if out.Name == "" {
+				out.Name = cached.Name()
 			}
 		}
 	}
 	return out
+}
+
+// guildIDString renders a guild snowflake, or "" when there is none, so a
+// missing guild never travels as the string "0".
+func guildIDString(id snowflake.ID) string {
+	if id == 0 {
+		return ""
+	}
+	return id.String()
 }
 
 // Message converts one disgo message. It never fails: anything it cannot resolve
@@ -150,9 +198,11 @@ func (a *Adapter) Channel(ch discord.Channel) transcript.Channel {
 //
 // Identities come from this message alone. Transcript is the entry point that
 // resolves mentions against the whole export, which is usually what a caller
-// wants; this one exists for mapping a message in isolation.
+// wants; this one exists for mapping a message in isolation. It still honours
+// WithMemberFetcher, because a lone message has exactly the same problem with an
+// uncached author.
 func (a *Adapter) Message(m discord.Message) transcript.Message {
-	return a.message(m, nil)
+	return a.message(m, newTranscriptIndex(transcript.Channel{}, []discord.Message{m}))
 }
 
 func (a *Adapter) message(m discord.Message, shared *transcriptIndex) transcript.Message {
@@ -213,7 +263,7 @@ func (a *Adapter) authorFor(m discord.Message, res *messageResolvers) transcript
 	author := authorFromUser(m.Author)
 	// The member may come from the payload or, more often for history fetches,
 	// from disgo's cache; either way it carries the nickname and role colour.
-	member, hasMember := res.memberFor(m.Author.ID)
+	member, hasMember := res.authorMemberFor(m.Author.ID)
 	if m.Member != nil {
 		member, hasMember = *m.Member, true
 	}

@@ -195,6 +195,113 @@ func TestActionRowsFromAJSONPayload(t *testing.T) {
 	}
 }
 
+// interactionChannel is the channel an interaction carries: partial, and it
+// does not implement discord.GuildChannel, so it names no guild.
+func interactionChannel(t *testing.T, id snowflake.ID, name string) discord.Channel {
+	t.Helper()
+	body, err := json.Marshal(map[string]any{
+		"id": id.String(), "type": 0, "name": name, "permissions": "0",
+	})
+	if err != nil {
+		t.Fatalf("marshal channel: %v", err)
+	}
+	var channel discord.InteractionChannel
+	if err := json.Unmarshal(body, &channel); err != nil {
+		t.Fatalf("unmarshal interaction channel: %v", err)
+	}
+	if channel.MessageChannel == nil {
+		t.Fatal("interaction channel did not unmarshal")
+	}
+	return channel
+}
+
+func TestInteractionChannelTakesItsGuildFromTheCache(t *testing.T) {
+	caches := cache.New(cache.WithCaches(cache.FlagChannels, cache.FlagGuilds))
+	caches.AddChannel(guildChannel(t, guildID, chanID, "ticket-0001").(discord.GuildChannel))
+
+	got := New(WithCaches(caches)).Channel(interactionChannel(t, chanID, "ticket-0001"))
+	if got.GuildID != guildID.String() {
+		t.Errorf("the cached channel should supply the guild, got %q", got.GuildID)
+	}
+	if got.Name != "ticket-0001" {
+		t.Errorf("name = %q", got.Name)
+	}
+}
+
+func TestChannelWithoutCachesDoesNotPanic(t *testing.T) {
+	// A guild channel used to reach into a nil cache the moment it was seen.
+	got := New().Channel(guildChannel(t, guildID, chanID, "general"))
+	if got.GuildID != guildID.String() {
+		t.Errorf("a full guild channel names its own guild, got %q", got.GuildID)
+	}
+	// A partial one with nothing to ask has to degrade, not crash.
+	if partial := New().Channel(interactionChannel(t, chanID, "ticket-0001")); partial.GuildID != "" {
+		t.Errorf("expected no guild, got %q", partial.GuildID)
+	}
+}
+
+// The whole ticket path: an interaction channel, messages fetched over REST
+// (no guild_id, no member), and a cache that holds roles but not the author.
+func TestTicketTranscriptResolvesGuildRolesAndColour(t *testing.T) {
+	caches := cache.New(cache.WithCaches(
+		cache.FlagMembers, cache.FlagRoles, cache.FlagChannels, cache.FlagGuilds,
+	))
+	caches.AddChannel(guildChannel(t, guildID, chanID, "ticket-0001").(discord.GuildChannel))
+	caches.RoleCache().Put(guildID, roleID, discord.Role{
+		ID: roleID, GuildID: guildID, Name: "Moderator", Color: 0x57F287, Position: 3,
+	})
+
+	var asked []snowflake.ID
+	adapter := New(
+		WithCaches(caches),
+		WithMemberFetcher(func(guild, user snowflake.ID) (discord.Member, bool) {
+			asked = append(asked, user)
+			if user != userID {
+				return discord.Member{}, false
+			}
+			return discord.Member{
+				User:    discord.User{ID: userID, Username: "piton", GlobalName: ptr("Piton")},
+				Nick:    ptr("Pit"),
+				GuildID: guild,
+				RoleIDs: []snowflake.ID{roleID},
+			}, true
+		}),
+	)
+
+	first := restMessage()
+	first.Content = "ping <@&333333333333333333> and <@222222222222222222>"
+	second := restMessage()
+	second.ID = snowflake.ID(1002)
+	second.Content = "again"
+
+	channel := adapter.Channel(interactionChannel(t, chanID, "ticket-0001"))
+	tr := adapter.Transcript(channel, []discord.Message{first, second})
+	out, err := tr.HTML(transcript.WithMedia(transcript.URLMedia()))
+	if err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	html := string(out)
+
+	for _, want := range []string{
+		`channel-name="ticket-0001"`,
+		// The role is cached, so its name and colour resolve without any fetch.
+		`<discord-mention type="role" style="--dt-mention-role-color: #57f287">Moderator</discord-mention>`,
+		// The author is not cached; the fetcher supplies the nickname and the
+		// role colour the cache alone could not.
+		`author="Pit"`,
+		`<span class="dt-author" style="color:#57f287">Pit</span>`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing %s in:\n%s", want, html)
+		}
+	}
+	// One lookup for the author, none for the user they mentioned, and only one
+	// even though two messages share the author.
+	if len(asked) != 1 || asked[0] != userID {
+		t.Errorf("expected exactly one author lookup, got %v", asked)
+	}
+}
+
 func TestUnsafeButtonURLIsNotALink(t *testing.T) {
 	msg := plainMessage()
 	msg.Components = []discord.LayoutComponent{

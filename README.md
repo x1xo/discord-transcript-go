@@ -390,18 +390,44 @@ colours. Offline exports should prefer overrides, which need no cache.
 **A cache is not enough on its own for REST history.** Discord's HTTP message
 object carries neither `guild_id` nor `member` — both are gateway-event fields —
 so a message list from `rest.GetMessages` names no guild, and every cache lookup
-is keyed on the guild. `Adapter.Channel` therefore carries the guild on
-`transcript.Channel.GuildID`, which is what makes the cache reachable:
+is keyed on the guild. The channel an **interaction** carries is no better:
+`event.Channel()` is a `discord.InteractionChannel`, which satisfies
+`discord.Channel` but not `discord.GuildChannel` and includes no `guild_id`.
+Since a ticket transcript is usually triggered by a button, both ends of the
+chain used to be guild-less. `Adapter.Channel` now takes the guild — and a
+missing name — from the channel the cache holds, and `WithGuildID` covers
+anything else:
 
 ```go
 adapter := disgo.New(disgo.WithCaches(client.Caches), disgo.WithGuildID(guildID))
-tr := adapter.Transcript(adapter.Channel(channel), messages) // Channel fills it in
+tr := adapter.Transcript(adapter.Channel(channel), messages)
 ```
 
-`Channel` already sets `GuildID` from any guild channel, so `WithGuildID` is only
-needed when the channel is built by hand. Without a guild ID a REST-fetched
-transcript has no nicknames, no guild avatars, no role colours and no role-mention
-names — even though the cache holds them.
+**Roles come from the cache, members often do not.** disgo caches every guild's
+roles from `GUILD_CREATE`, so once the guild is known a `<@&role>` mention and a
+role colour resolve. Members are a different story: they are cached from
+`GUILD_CREATE` (which in a large guild carries few or none), from member and
+voice events, and from explicit chunking — so most authors in a big guild have
+no cached member, and a member is the only source of a nickname, a guild avatar
+and a role colour. `WithMemberFetcher` closes that gap:
+
+```go
+adapter := disgo.New(
+	disgo.WithCaches(client.Caches),
+	disgo.WithGuildID(guildID),
+	disgo.WithMemberFetcher(func(guildID, userID snowflake.ID) (discord.Member, bool) {
+		member, err := client.Rest.GetMember(guildID, userID)
+		if err != nil || member == nil {
+			return discord.Member{}, false
+		}
+		return *member, true
+	}),
+)
+```
+
+It is asked at most once per distinct author per transcript, and never for a
+mention, whose count is unbounded. Without it a transcript still renders, with
+whatever identity each message carries.
 
 Mentions that cannot be resolved keep their raw ID rather than vanishing, because
 a transcript is a record of what was said.

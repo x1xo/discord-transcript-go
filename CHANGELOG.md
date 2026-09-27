@@ -4,6 +4,29 @@ Versions here belong to the Go module and move on their own. The markup contract
 the renderer emits is `transcript.ContractVersion`, generated from the
 `discord-transcript-ui` build, and it is listed per release below.
 
+## 1.6.0
+
+Contract: `discord-transcript-ui` 1.1.4 (unchanged).
+
+* **The channel an interaction carries names no guild, so nothing resolved.**
+  `Adapter.Channel` read the guild off the channel object, but
+  `event.Channel()` — how a ticket transcript is usually triggered — is a
+  `discord.InteractionChannel`: partial, satisfying `discord.Channel` but not
+  `discord.GuildChannel`, with no `guild_id` in the payload. Since every cache
+  lookup is keyed on the guild, such a transcript had no role names, no role
+  colours and no nicknames even with a warm cache. The adapter now falls back to
+  the channel the cache holds, which does carry the guild, and takes a missing
+  channel name from the same place. `Adapter.Channel` also no longer reaches into
+  a nil cache — it used to panic for any guild channel when no caches were
+  configured.
+* **`WithMemberFetcher` fills in authors the caches do not hold.** disgo caches
+  roles for every guild, but members only from `GUILD_CREATE`, from member and
+  voice events, and from explicit chunking. In a large guild most message authors
+  therefore have no cached member, and a member is the only source of a nickname,
+  a guild avatar and a role colour. A fetcher — point it at `Rest.GetMember` —
+  is asked at most once per distinct author per transcript, and never for a
+  mention, whose count is unbounded. `Adapter.Message` honours it too.
+
 ## 1.5.0
 
 Contract: `discord-transcript-ui` **1.1.4** (was 1.1.3).

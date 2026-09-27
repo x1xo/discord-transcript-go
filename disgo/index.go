@@ -57,6 +57,10 @@ func (s *identitySet) absorb(m discord.Message) {
 type transcriptIndex struct {
 	set     *identitySet
 	guildID snowflake.ID
+	// fetched and missing memoise MemberFetcher, so a prolific author costs one
+	// lookup rather than one per message.
+	fetched map[snowflake.ID]discord.Member
+	missing map[snowflake.ID]bool
 }
 
 func newTranscriptIndex(channel transcript.Channel, messages []discord.Message) *transcriptIndex {
@@ -96,6 +100,38 @@ func (idx *transcriptIndex) nameOwnChannel(channel transcript.Channel, messages 
 	if best != 0 {
 		idx.set.channels[best] = channel.Name
 	}
+}
+
+// fetchMember asks the configured fetcher for a member neither the export nor
+// the caches know. The answer is remembered for the rest of the render, and
+// published into the set, so a later message or mention sees it through the
+// ordinary lookup order.
+func (idx *transcriptIndex) fetchMember(id, guild snowflake.ID, fetch MemberFetcher) (discord.Member, bool) {
+	if fetch == nil || guild == 0 {
+		return discord.Member{}, false
+	}
+	if member, ok := idx.fetched[id]; ok {
+		return member, true
+	}
+	if idx.missing[id] {
+		return discord.Member{}, false
+	}
+	member, ok := fetch(guild, id)
+	if !ok {
+		if idx.missing == nil {
+			idx.missing = make(map[snowflake.ID]bool, 4)
+		}
+		idx.missing[id] = true
+		return discord.Member{}, false
+	}
+	if idx.fetched == nil {
+		idx.fetched = make(map[snowflake.ID]discord.Member, 4)
+	}
+	idx.fetched[id] = member
+	if member.User.ID != 0 {
+		idx.set.members[id] = member
+	}
+	return member, true
 }
 
 // user finds a user, preferring a guild member so a nickname wins.
