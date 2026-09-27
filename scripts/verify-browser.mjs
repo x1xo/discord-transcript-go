@@ -174,6 +174,27 @@ const result = await send('Runtime.evaluate', {
 		check('reactions rendered', all(T('reaction','dr')).length > 0, true);
 		check('reply rendered', all(T('reply','drp')).length > 0, true);
 
+		// Action rows: a bot's buttons must appear even though a reader cannot
+		// press most of them. Label, emoji and disabled state come straight from
+		// the markup, and a button with a URL is a real anchor, so it stays
+		// clickable with no script at all.
+		const rows = all(T('action-row', 'dar'));
+		if (rows.length) {
+			const buttons = all(T('button', 'dbtn'));
+			check('buttons rendered', buttons.length > 0, true);
+			check('every button sits in a row', buttons.every((b) => b.closest(T('action-row', 'dar'))), true);
+			check('button labels rendered', buttons.some((b) => b.textContent.trim().length > 0), true);
+			check('custom button emoji is an image', buttons.some((b) => b.querySelector('img.dt-button-emoji')), true);
+			check('disabled button marked', buttons.some((b) => b.hasAttribute('disabled')), true);
+			const primaryButton = buttons.find((b) => b.getAttribute('type') === 'primary');
+			check('primary button colour', primaryButton ? style(primaryButton, 'background-color') : '', 'rgb(88, 101, 242)');
+			const disabledButton = buttons.find((b) => b.hasAttribute('disabled'));
+			check('disabled button is dimmed', disabledButton ? parseFloat(style(disabledButton, 'opacity')) : 1, 0.5);
+			const linkButton = document.querySelector('a.dt-button-link');
+			check('link button is a real anchor', !!(linkButton && /^https?:/.test(linkButton.href)), true);
+			check('link button anchor adds no underline', linkButton ? style(linkButton, 'text-decoration-line') : '', 'none');
+		}
+
 		// Headers: markdown headings render, and the channel header comes from the
 		// channel-name attribute via the stylesheet.
 		const headings = all(T('header','dh'));
@@ -202,6 +223,28 @@ const result = await send('Runtime.evaluate', {
 			if (description) {
 				check('description keeps its line breaks', description.innerHTML.includes('<br>'), true);
 			}
+		}
+
+		// Width: an embed is a block box, so it used to stretch to the whole
+		// 516px column even when it held one short line. It must now hug its
+		// content, and still stop at Discord's 516px cap when the text is long.
+		check('embeds exist to measure', all(T('embed', 'de')).length > 0, true);
+		check('no embed exceeds the 516px cap', all(T('embed', 'de')).every((node) => node.getBoundingClientRect().width <= 516), true);
+		const longEmbed = all(T('embed', 'de')).find((node) => node.querySelector(T('pre', 'dp')));
+		if (longEmbed) {
+			const longWidth = longEmbed.getBoundingClientRect().width;
+			check('a long embed stops at the 516px cap', longWidth > 500 && longWidth <= 516, true);
+		}
+		const shortEmbed = all(T('embed', 'de')).find((node) => {
+			if (node.querySelector(T('embed-field', 'def') + ', .dt-embed-thumbnail, .dt-embed-image, [slot="thumbnail"], [slot="image"]')) return false;
+			const text = node.querySelector(T('embed-description', 'ded'));
+			const length = text ? text.textContent.trim().length : 0;
+			return length > 0 && length < 60;
+		});
+		if (shortEmbed) {
+			const shortWidth = Math.round(shortEmbed.getBoundingClientRect().width);
+			check('a short embed hugs its content', shortWidth > 120 && shortWidth < 400, true);
+			check('a short embed is narrower than the cap', shortWidth < 516, true);
 		}
 
 		// Embed text is a document of its own. A description or a field value may

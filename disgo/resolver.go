@@ -40,6 +40,11 @@ func (a *Adapter) resolversFor(m discord.Message, shared *transcriptIndex) *mess
 	if r.guildID == 0 && shared != nil {
 		r.guildID = shared.guildID
 	}
+	if r.guildID == 0 {
+		// Nothing in the export said which guild this is — the usual case for
+		// messages fetched over REST — so fall back to the configured one.
+		r.guildID = a.opts.GuildID
+	}
 	r.local.absorb(m)
 	if m.ReferencedMessage != nil {
 		r.local.absorb(*m.ReferencedMessage)
@@ -149,15 +154,36 @@ func (r *messageResolvers) Role(id string) (string, string, bool) {
 	if !ok {
 		return "", "", false
 	}
+	info, ok := r.roleInfoFor(snowflakeID)
+	if !ok {
+		return "", "", false
+	}
+	return info.name, info.color, true
+}
+
+// roleInfo is what one role contributes: its name, its colour and its place in
+// the hierarchy.
+type roleInfo struct {
+	name     string
+	color    string
+	position int
+}
+
+// roleInfoFor resolves a role ID. Caller overrides win, then disgo's cache.
+//
+// The override map is the only source that needs no guild: it is addressed by
+// role ID alone. That matters both for offline exports and for the message shape
+// REST hands back, which names no guild at all.
+func (r *messageResolvers) roleInfoFor(id snowflake.ID) (roleInfo, bool) {
 	if r.base.opts.Roles != nil {
-		if name, color, ok := r.base.opts.Roles.Role(id); ok {
-			return name, color, true
+		if info, ok := r.base.opts.Roles[id.String()]; ok {
+			return roleInfo{name: info.Name, color: info.Color, position: info.Position}, true
 		}
 	}
-	if role, ok := r.lookupRole(snowflakeID); ok {
-		return role.Name, roleColor(role), true
+	if role, ok := r.cachedRole(id); ok {
+		return roleInfo{name: role.Name, color: roleColor(role), position: role.Position}, true
 	}
-	return "", "", false
+	return roleInfo{}, false
 }
 
 // roleColorFor returns the colour of a member's highest coloured role, which is
@@ -166,22 +192,20 @@ func (r *messageResolvers) roleColorFor(member discord.Member) string {
 	best := ""
 	bestPosition := -1
 	for _, roleID := range member.RoleIDs {
-		role, ok := r.lookupRole(roleID)
-		if !ok {
+		info, ok := r.roleInfoFor(roleID)
+		if !ok || info.color == "" {
 			continue
 		}
-		if roleColor(role) == "" {
-			continue
-		}
-		if role.Position > bestPosition {
-			bestPosition = role.Position
-			best = roleColor(role)
+		if info.position > bestPosition {
+			bestPosition = info.position
+			best = info.color
 		}
 	}
 	return best
 }
 
-func (r *messageResolvers) lookupRole(id snowflake.ID) (discord.Role, bool) {
+// cachedRole finds a role in disgo's cache, the last resort.
+func (r *messageResolvers) cachedRole(id snowflake.ID) (discord.Role, bool) {
 	if role, ok := r.roles[id]; ok {
 		return role, true
 	}

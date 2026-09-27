@@ -35,6 +35,13 @@ type Options struct {
 	Channels transcript.Channels
 	// Roles overrides role name and colour by role ID.
 	Roles transcript.Roles
+	// GuildID is the guild the messages belong to. It is only needed when the
+	// messages do not carry their own guild: a message fetched over REST has
+	// neither guild_id nor member, so without this the adapter cannot ask the
+	// cache for a nickname, a guild avatar or a role colour. Adapter.Channel
+	// fills it in from any guild channel, so this is for callers who build the
+	// channel themselves.
+	GuildID snowflake.ID
 	// SelfUserID marks messages that mention this user as highlighted.
 	SelfUserID snowflake.ID
 	// SkipReplies renders messages without their "replying to" preview.
@@ -57,6 +64,12 @@ func WithChannels(channels transcript.Channels) Option {
 
 // WithRoles supplies role names and colours directly.
 func WithRoles(roles transcript.Roles) Option { return func(o *Options) { o.Roles = roles } }
+
+// WithGuildID names the guild the messages belong to, for messages that do not
+// carry it themselves (anything fetched over REST). Adapter.Channel already
+// fills this in from a guild channel, so this is the escape hatch for a channel
+// object that is not one.
+func WithGuildID(id snowflake.ID) Option { return func(o *Options) { o.GuildID = id } }
 
 // WithSelfUserID marks messages mentioning this user as highlighted.
 func WithSelfUserID(id snowflake.ID) Option { return func(o *Options) { o.SelfUserID = id } }
@@ -93,6 +106,17 @@ func (a *Adapter) Transcript(channel transcript.Channel, messages []discord.Mess
 	// message, so a mention resolves even when only some other message knows the
 	// name. See transcriptIndex.
 	idx := newTranscriptIndex(channel, messages)
+	// A message fetched over REST carries no guild, so the channel (or the
+	// explicit option) is the only thing that can name it. Without a guild the
+	// cache cannot be asked for members or roles at all.
+	if idx.guildID == 0 {
+		if id, err := snowflake.Parse(channel.GuildID); err == nil {
+			idx.guildID = id
+		}
+	}
+	if idx.guildID == 0 {
+		idx.guildID = a.opts.GuildID
+	}
 	for _, m := range messages {
 		tr.Messages = append(tr.Messages, a.message(m, idx))
 	}
@@ -109,12 +133,14 @@ func (a *Adapter) Channel(ch discord.Channel) transcript.Channel {
 		out.Name = named.Name()
 	}
 	if guild, ok := ch.(discord.GuildChannel); ok {
+		// The guild travels with the channel so a cache-only adapter can resolve
+		// identity for messages that do not mention their guild at all.
+		out.GuildID = guild.GuildID().String()
 		if cached, ok := a.opts.Caches.Channel(ch.ID()); ok {
 			if named, ok := cached.(interface{ Name() string }); ok && out.Name == "" {
 				out.Name = named.Name()
 			}
 		}
-		_ = guild
 	}
 	return out
 }
@@ -168,6 +194,7 @@ func (a *Adapter) message(m discord.Message, shared *transcriptIndex) transcript
 	for _, r := range m.Reactions {
 		out.Reactions = append(out.Reactions, a.reaction(r))
 	}
+	out.ActionRows = a.actionRows(m.Components)
 	if len(m.StickerItems) > 0 {
 		// Stickers are out of scope for the current renderer. They are kept as
 		// text so the transcript does not silently lose the fact one was posted.
@@ -337,6 +364,91 @@ func attachmentKind(contentType *string) transcript.MediaKind {
 		return transcript.MediaAudio
 	default:
 		return transcript.MediaFile
+	}
+}
+
+// actionRows maps a message's interactive components onto the model. Only
+// action rows of buttons are drawn: a select menu, or a components-v2 container,
+// has no element in the stylesheet, and drawing one as something else would
+// misrepresent what a reader could have pressed. A row that holds nothing else
+// is therefore dropped rather than left as an empty gap.
+func (a *Adapter) actionRows(components []discord.LayoutComponent) []transcript.ActionRow {
+	var rows []transcript.ActionRow
+	for _, component := range components {
+		items := actionRowItems(component)
+		if len(items) == 0 {
+			continue
+		}
+		row := transcript.ActionRow{Buttons: make([]transcript.Button, 0, len(items))}
+		for _, item := range items {
+			button, ok := asButton(item)
+			if !ok {
+				continue
+			}
+			row.Buttons = append(row.Buttons, a.button(button))
+		}
+		if len(row.Buttons) > 0 {
+			rows = append(rows, row)
+		}
+	}
+	return rows
+}
+
+// actionRowItems unwraps an action row. Both a value and a pointer are accepted
+// because disgo stores values when it unmarshals and callers may hand over
+// either when they build a message by hand.
+func actionRowItems(component discord.LayoutComponent) []discord.InteractiveComponent {
+	switch row := component.(type) {
+	case discord.ActionRowComponent:
+		return row.Components
+	case *discord.ActionRowComponent:
+		return row.Components
+	}
+	return nil
+}
+
+func asButton(item discord.InteractiveComponent) (discord.ButtonComponent, bool) {
+	switch button := item.(type) {
+	case discord.ButtonComponent:
+		return button, true
+	case *discord.ButtonComponent:
+		return *button, true
+	}
+	return discord.ButtonComponent{}, false
+}
+
+func (a *Adapter) button(b discord.ButtonComponent) transcript.Button {
+	out := transcript.Button{
+		Label:    b.Label,
+		Style:    buttonStyle(b.Style),
+		URL:      b.URL,
+		Disabled: b.Disabled,
+	}
+	if b.Emoji == nil {
+		return out
+	}
+	if b.Emoji.ID != 0 {
+		out.EmojiURL = discord.Emoji{ID: b.Emoji.ID, Name: b.Emoji.Name, Animated: b.Emoji.Animated}.URL()
+		out.EmojiName = ":" + b.Emoji.Name + ":"
+	} else {
+		out.Emoji = b.Emoji.Name
+	}
+	return out
+}
+
+func buttonStyle(style discord.ButtonStyle) transcript.ButtonStyle {
+	switch style {
+	case discord.ButtonStylePrimary:
+		return transcript.ButtonPrimary
+	case discord.ButtonStyleSuccess:
+		return transcript.ButtonSuccess
+	case discord.ButtonStyleDanger:
+		return transcript.ButtonDanger
+	case discord.ButtonStyleLink:
+		return transcript.ButtonLink
+	default:
+		// Secondary, and the premium/SKU style the stylesheet has no colour for.
+		return transcript.ButtonSecondary
 	}
 }
 

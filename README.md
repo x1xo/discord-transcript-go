@@ -322,8 +322,10 @@ emoji (including animated) and `<t:…>` timestamps in every format flag.
 Messages: author identity (nickname, guild avatar, role colour), timestamps,
 `(edited)`, replies, embeds (provider, author, title, description, fields, footer,
 image, video, thumbnail), attachments (image, video, audio, file, spoilers),
-reactions, system messages (`MessageType` → join/leave/call/boost/edit/pin/thread),
-and continuation grouping computed at render time.
+action rows of buttons (all five styles, labels, unicode and custom emoji,
+`disabled`, and a real link for a URL button), reactions, system messages
+(`MessageType` → join/leave/call/boost/edit/pin/thread), and continuation grouping
+computed at render time.
 
 An embed description and every field value are parsed as markdown documents, not
 as one line of text: headings, lists, quotes, fenced blocks and subtext inside an
@@ -332,9 +334,11 @@ is a ticket bot's reply and shows all of it. Reply previews, system messages and
 thread previews stay single-line instead, because those slots render a snippet
 rather than a document — they keep the text of a code block, but not its frame.
 
-Not yet: threads, buttons and select menus, stickers (kept as `[sticker: name]` so
-nothing is lost), polls, forwarded snapshots and slash-command rows. The model and
-renderer understand threads; the adapter does not map them yet.
+Not yet: threads, select menus, stickers (kept as `[sticker: name]` so nothing is
+lost), polls, forwarded snapshots and slash-command rows. The model and renderer
+understand threads; the adapter does not map them yet. A select menu — or a
+components-v2 container — has no element in the stylesheet, so a row holding only
+one of those is dropped rather than drawn as an empty gap.
 
 ## Identity resolution
 
@@ -368,6 +372,10 @@ adapter := disgo.New(
 )
 ```
 
+The same map colours author names: a member is drawn in their highest coloured
+role, and `RoleInfo.Position` is what picks it, which `RolesFrom` fills in from the
+guild's roles.
+
 **Gotcha:** disgo's caches are no-ops unless they were created with the right flags:
 
 ```go
@@ -379,6 +387,22 @@ caches := cache.New(cache.WithCaches(
 Without them you get usernames and default avatars, but no nicknames and no role
 colours. Offline exports should prefer overrides, which need no cache.
 
+**A cache is not enough on its own for REST history.** Discord's HTTP message
+object carries neither `guild_id` nor `member` — both are gateway-event fields —
+so a message list from `rest.GetMessages` names no guild, and every cache lookup
+is keyed on the guild. `Adapter.Channel` therefore carries the guild on
+`transcript.Channel.GuildID`, which is what makes the cache reachable:
+
+```go
+adapter := disgo.New(disgo.WithCaches(client.Caches), disgo.WithGuildID(guildID))
+tr := adapter.Transcript(adapter.Channel(channel), messages) // Channel fills it in
+```
+
+`Channel` already sets `GuildID` from any guild channel, so `WithGuildID` is only
+needed when the channel is built by hand. Without a guild ID a REST-fetched
+transcript has no nicknames, no guild avatars, no role colours and no role-mention
+names — even though the cache holds them.
+
 Mentions that cannot be resolved keep their raw ID rather than vanishing, because
 a transcript is a record of what was said.
 
@@ -386,7 +410,7 @@ a transcript is a record of what was said.
 
 ```
 transcript/            no Discord dependency
-  model.go             the IR: Transcript, Message, Author, Embed, Attachment, …
+  model.go             the IR: Transcript, Message, Author, Embed, Attachment, ActionRow, …
   markdown.go          Discord markdown -> node tree
   render.go            node tree -> the complete static markup the stylesheet targets
   grouping.go          continuation rows (same author, close in time)

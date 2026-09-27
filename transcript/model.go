@@ -29,6 +29,12 @@ type Channel struct {
 	Guild string
 	// ID is the channel snowflake, when known.
 	ID string
+	// GuildID is the snowflake of the guild the channel lives in. The renderer
+	// never emits it; an adapter uses it to look identity up in a per-guild
+	// cache. It matters because a message fetched over REST carries neither its
+	// guild nor its member, so this is the only way a cache-only adapter learns
+	// which guild to ask about nicknames and role colours.
+	GuildID string
 }
 
 // ChannelType mirrors the channel-type attribute of <discord-messages>.
@@ -97,8 +103,13 @@ type Message struct {
 
 	Embeds      []Embed
 	Attachments []Attachment
-	Reactions   []Reaction
-	Thread      *Thread
+	// ActionRows are the interactive components under the message: buttons, and
+	// whatever else a producer chose to put in a row. Rows that end up empty are
+	// skipped, so a row holding only a select menu draws nothing rather than an
+	// empty gap.
+	ActionRows []ActionRow
+	Reactions  []Reaction
+	Thread     *Thread
 }
 
 // IsSystem reports whether the row renders as a system message.
@@ -231,3 +242,56 @@ type Thread struct {
 	CTA     string
 	Message []Message
 }
+
+// ActionRow is one row of interactive components under a message, rendered as
+// <discord-action-row>. Rows hold buttons; a producer that models something the
+// stylesheet has no element for simply leaves the row out.
+type ActionRow struct {
+	Buttons []Button
+}
+
+// Button is one clickable item in an action row.
+//
+// A button with a URL renders as a real link, so it works with no JavaScript at
+// all. Every other button is inert in a transcript — a bot's custom_id has no
+// meaning to a reader — but keeps its Discord styling and disabled state, so the
+// row still shows what the bot offered.
+type Button struct {
+	// Label is the button text. Optional when Emoji is set.
+	Label string
+	// Style picks the colour. The zero value renders as secondary.
+	Style ButtonStyle
+	// Emoji is a unicode emoji shown before the label.
+	Emoji string
+	// EmojiURL is a custom emoji image, shown before the label. It wins over
+	// Emoji when both are set.
+	EmojiURL string
+	// EmojiName is the ":name:" alt text for a custom emoji.
+	EmojiName string
+	// URL makes the button a link.
+	URL string
+	// Disabled dims the button.
+	Disabled bool
+}
+
+// ButtonStyle is the type attribute of <discord-button>.
+type ButtonStyle string
+
+// Supported button styles. Note that Discord calls the red style "danger" while
+// the stylesheet calls it "destructive"; both names are accepted there, and
+// producers should use ButtonDanger.
+const (
+	ButtonPrimary   ButtonStyle = "primary"
+	ButtonSecondary ButtonStyle = "secondary"
+	ButtonSuccess   ButtonStyle = "success"
+	ButtonDanger    ButtonStyle = "destructive"
+	ButtonLink      ButtonStyle = "link"
+)
+
+// IsLink reports whether the button asked to be a link. The renderer still
+// sanitises the URL, so one with a rejected target draws as an ordinary inert
+// button instead.
+func (b Button) IsLink() bool { return b.Style == ButtonLink && b.URL != "" }
+
+// IsEmpty reports whether the button would draw nothing at all.
+func (b Button) IsEmpty() bool { return b.Label == "" && b.Emoji == "" && b.EmojiURL == "" }

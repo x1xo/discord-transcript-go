@@ -93,6 +93,14 @@ func exampleTranscript(t *testing.T) *Transcript {
 					{Kind: MediaImage, URL: examplePNG, Name: "screenshot.png", Alt: "a screenshot", Width: 400, Height: 300},
 					{Kind: MediaFile, URL: "https://example.com/report.pdf", Name: "report.pdf", SizeBytes: 48128},
 				},
+				ActionRows: []ActionRow{{
+					Buttons: []Button{
+						{Label: "Confirm", Style: ButtonPrimary, Emoji: "✅"},
+						{Label: "Docs", Style: ButtonLink, URL: "https://example.com/docs"},
+						{Label: "Delete", Style: ButtonDanger, Disabled: true},
+						{EmojiURL: "https://cdn.discordapp.com/emojis/999999999999999999.png", EmojiName: ":party:"},
+					},
+				}},
 				Reactions: []Reaction{
 					{Emoji: "🎉", Count: 3, Reacted: true},
 					{Emoji: "🍰", Count: 12},
@@ -201,6 +209,24 @@ func exampleEmbedTranscript(t *testing.T) *Transcript {
 					{Name: "Last error", Value: parse("```\npanic: assignment to entry in nil map\ngoroutine 1 [running]\n```")},
 				},
 				Footer: &EmbedFooter{Text: "every field above is markdown"},
+			}},
+		},
+		Message{
+			Author:    ticketBot,
+			Timestamp: at(14, 35),
+			Content:   parse("Are you done?"),
+			// One short line: the embed should be as wide as the sentence, not the
+			// whole message column.
+			Embeds: []Embed{{
+				Color:       "#5865f2",
+				Description: parse("This embed is one line long."),
+			}},
+			ActionRows: []ActionRow{{
+				Buttons: []Button{
+					{Label: "Close ticket", Style: ButtonDanger, Emoji: "🔒"},
+					{Label: "Transcript", Style: ButtonLink, URL: "https://example.com/transcripts/332.html", Emoji: "📜"},
+					{EmojiURL: "https://cdn.discordapp.com/emojis/999999999999999999.png", EmojiName: ":party:"},
+				},
 			}},
 		},
 	)

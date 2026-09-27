@@ -111,11 +111,17 @@ func (idx *transcriptIndex) user(id snowflake.ID) (discord.User, discord.Member,
 
 // RolesFrom converts a guild's roles into the override map WithRoles takes, so
 // an offline export can resolve role mentions and draw role colours without a
-// cache. It is a convenience: WithRoles accepts the map directly.
+// cache. It is a convenience: WithRoles accepts the map directly. The role
+// positions travel with it, because a member with several coloured roles is
+// drawn in the highest one.
 func RolesFrom(roles []discord.Role) transcript.Roles {
 	out := make(transcript.Roles, len(roles))
 	for _, role := range roles {
-		out[role.ID.String()] = transcript.RoleInfo{Name: role.Name, Color: roleColor(role)}
+		out[role.ID.String()] = transcript.RoleInfo{
+			Name:     role.Name,
+			Color:    roleColor(role),
+			Position: role.Position,
+		}
 	}
 	return out
 }

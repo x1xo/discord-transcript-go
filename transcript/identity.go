@@ -50,6 +50,11 @@ func (c Channels) Channel(id string) (string, bool) {
 type RoleInfo struct {
 	Name  string
 	Color string // "#rrggbb"
+	// Position is the role's place in the guild hierarchy, higher meaning more
+	// important. It only matters when a member has several coloured roles:
+	// Discord draws the name in the highest one, and that is the role this
+	// position picks. Leave it zero and the first coloured role wins.
+	Position int
 }
 
 // Roles maps role IDs to their display information.

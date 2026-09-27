@@ -16,11 +16,12 @@ import (
 func ptr[T any](v T) *T { return &v }
 
 var (
-	userID  = snowflake.ID(111111111111111111)
-	otherID = snowflake.ID(222222222222222222)
-	guildID = snowflake.ID(900000000000000001)
-	roleID  = snowflake.ID(333333333333333333)
-	chanID  = snowflake.ID(444444444444444444)
+	userID      = snowflake.ID(111111111111111111)
+	otherID     = snowflake.ID(222222222222222222)
+	guildID     = snowflake.ID(900000000000000001)
+	roleID      = snowflake.ID(333333333333333333)
+	otherRoleID = snowflake.ID(333333333333333334)
+	chanID      = snowflake.ID(444444444444444444)
 )
 
 func baseTime() time.Time {

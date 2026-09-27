@@ -107,6 +107,7 @@ func (r *renderer) writeMessage(m Message, g grouping) {
 	if len(m.Attachments) > 0 {
 		r.writeAttachments(m.Attachments)
 	}
+	r.writeActionRows(m.ActionRows)
 	if len(m.Reactions) > 0 {
 		r.writeReactions(m.Reactions)
 	}
@@ -355,6 +356,73 @@ func (r *renderer) writeFileAttachment(a Attachment) {
 		r.b.WriteString(`</span></a>`)
 	}
 	r.b.WriteString(`</discord-file-attachment>`)
+}
+
+// writeActionRows draws the interactive components under a message. A button
+// carries everything the stylesheet needs — its style, its label and its emoji —
+// so the row reads correctly with no script at all.
+//
+// A link button is wrapped in an anchor, because a light-DOM custom element
+// cannot navigate on its own; every other button is deliberately inert, since a
+// bot's custom_id means nothing to a reader.
+func (r *renderer) writeActionRows(rows []ActionRow) {
+	for _, row := range rows {
+		opened := false
+		for _, button := range row.Buttons {
+			if button.IsEmpty() {
+				continue
+			}
+			if !opened {
+				r.b.WriteString(`<discord-action-row data-dt-r>`)
+				opened = true
+			}
+			r.writeButton(button)
+		}
+		if opened {
+			r.b.WriteString(`</discord-action-row>`)
+		}
+	}
+}
+
+func (r *renderer) writeButton(b Button) {
+	href := ""
+	if b.IsLink() {
+		href = sanitizeURL(b.URL)
+	}
+	if href != "" {
+		r.b.WriteString(`<a class="dt-button-link" href="` + escapeText(href) +
+			`" target="_blank" rel="noopener noreferrer">`)
+	}
+	r.b.WriteString(`<discord-button data-dt-r`)
+	// Secondary is what the stylesheet draws by default, so it stays implicit.
+	if b.Style != "" && b.Style != ButtonSecondary {
+		r.attr("type", string(b.Style))
+	}
+	if b.Disabled {
+		r.flag("disabled")
+	}
+	r.b.WriteString(">")
+	if b.EmojiURL != "" {
+		src := r.resolve(MediaRef{
+			URL: b.EmojiURL, Kind: MediaEmoji, Use: UseEmoji,
+			Filename: b.EmojiName, TargetEdge: r.targetEdge("emoji"),
+		})
+		if src != "" {
+			alt := b.EmojiName
+			if alt == "" {
+				alt = "emoji"
+			}
+			r.b.WriteString(`<img class="dt-button-emoji" src="` + escapeText(src) +
+				`" alt="` + escapeText(alt) + `" loading="lazy" decoding="async">`)
+		}
+	} else if b.Emoji != "" {
+		// A unicode emoji is just text; the flex gap spaces it from the label.
+		r.b.WriteString(escapeText(b.Emoji))
+	}
+	r.b.WriteString(escapeText(b.Label) + `</discord-button>`)
+	if href != "" {
+		r.b.WriteString(`</a>`)
+	}
 }
 
 func (r *renderer) writeReactions(list []Reaction) {

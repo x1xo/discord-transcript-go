@@ -67,6 +67,14 @@ func sampleTranscript(t *testing.T) *Transcript {
 					{Kind: MediaImage, URL: "https://cdn.discordapp.com/attachments/1/2/spoiler.png", Alt: "hidden", Spoiler: true},
 					{Kind: MediaFile, URL: "https://cdn.discordapp.com/attachments/1/2/report.pdf", Name: "report.pdf", SizeBytes: 1536},
 				},
+				ActionRows: []ActionRow{{
+					Buttons: []Button{
+						{Label: "Confirm", Style: ButtonPrimary, Emoji: "✅"},
+						{Label: "Docs", Style: ButtonLink, URL: "https://example.com/docs"},
+						{Label: "Delete", Style: ButtonDanger, Disabled: true},
+						{EmojiURL: "https://cdn.discordapp.com/emojis/999999999999999999.png", EmojiName: ":party:"},
+					},
+				}},
 			},
 			{
 				Timestamp: mustTime(t, "2024-03-15T14:31:00Z"),

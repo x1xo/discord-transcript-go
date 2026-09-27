@@ -4,6 +4,33 @@ Versions here belong to the Go module and move on their own. The markup contract
 the renderer emits is `transcript.ContractVersion`, generated from the
 `discord-transcript-ui` build, and it is listed per release below.
 
+## 1.5.0
+
+Contract: `discord-transcript-ui` **1.1.4** (was 1.1.3).
+
+* **Action rows and buttons are rendered.** `discord.Message.Components` was
+  ignored, so every button a bot posted vanished from the transcript. The model
+  gains `ActionRow` and `Button`, and `Message.ActionRows` reaches
+  `<discord-action-row>` / `<discord-button>`: all five styles, the label, a
+  unicode or custom emoji, and the disabled state. A button with a URL is wrapped
+  in an anchor, so it is clickable with no script. A row whose only item is
+  something the stylesheet has no element for — a select menu, a components-v2
+  container — is dropped rather than drawn as an empty gap.
+* **Guild identity now resolves for messages fetched over REST.** Discord's HTTP
+  message object carries neither `guild_id` nor `member` (both are gateway-event
+  fields), and every cache lookup was keyed on the guild, so
+  `rest.GetMessages` history produced transcripts with no nicknames, no guild
+  avatars and no role colours. `Adapter.Channel` now carries the guild from a
+  guild channel in `Channel.GuildID`, and `WithGuildID` covers a channel built by
+  hand, so the cache can answer.
+* **`WithRoles` colours author names.** `disgo.RolesFrom` / `WithRoles` fed role
+  *mentions* only: the author-colour lookup never consulted the override map, so
+  the "role colours come from the same map" promise of 1.4.0 did not hold without
+  a cache. Both paths now share one lookup, and `RoleInfo.Position` keeps the
+  hierarchy so a member with several coloured roles is drawn in the highest one.
+* Unresolved role mentions still keep their raw ID, and a button URL that fails
+  sanitising renders as an inert button rather than a `javascript:` link.
+
 ## 1.4.1
 
 Contract: `discord-transcript-ui` **1.1.3** (was 1.1.2).
